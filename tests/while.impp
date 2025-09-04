@@ -1,0 +1,7 @@
+var i : integer is 0
+routine main() is
+    while i < 5 loop
+        print i
+        i := i + 1
+    end
+end

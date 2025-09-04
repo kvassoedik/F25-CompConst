@@ -1,0 +1,4 @@
+var b : boolean is true
+routine main() is
+  if b then print 1 else print 0 end
+end

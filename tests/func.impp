@@ -1,0 +1,12 @@
+routine power(n: integer, p: integer): integer is
+    var res: integer
+    res := n
+    while p > 1 loop
+        res := res * n
+        p := p - 1
+    end
+    return res
+end
+routine main() is
+    print power(3, 4)
+end

@@ -1,0 +1,5 @@
+var x : integer is 1
+routine main() is
+  x := x + 1
+  print x
+end
