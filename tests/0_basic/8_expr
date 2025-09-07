@@ -1,23 +1,25 @@
-print true and true // true
-print (true) and (true and true) // true
-print not true = false // true
-print false or true // true
-print true or false // true
-print false and true // false
-print false xor true // true
-print true xor true // false
-print
+routine main() is
+    print true and true // true
+    print (true) and (true and true) // true
+    print not true = false // true
+    print false or true // true
+    print true or false // true
+    print false and true // false
+    print false xor true // true
+    print true xor true // false
+    print
 
-var x is 10.
-var y is 1
-print (x*y)*2 // 20.0
-print 2+2*2 // 6
-print (2+2)*2 // 8
-print (2+2)*not 2 // -8
-print (2 * x-1 + (x + x)/x) // 22.0
-print y*y > y // false
-print y=y and y=y // true
-print
-print true xor y=y // false
-print (x>(y + x)) // false
-print (x>x or y+x > x) and (false or true) xor false // true
+    var x is 10.
+    var y is 1
+    print (x*y)*2 // 20.0
+    print 2+2*2 // 6
+    print (2+2)*2 // 8
+    print (2+2)*not 2 // -8
+    print (2 * x-1 + (x + x)/x) // 22.0
+    print y*y > y // false
+    print y=y and y=y // true
+    print
+    print true xor y=y // false
+    print (x>(y + x)) // false
+    print (x>x or y+x > x) and (false or true) xor false // true
+end

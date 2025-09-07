@@ -3,5 +3,7 @@ routine fact(num: integer): integer is
     return num * fact(num - 1)
 end
 
-print fact(2) // 2
-print fact(5) // 120
+routine main() is
+    print fact(2) // 2
+    print fact(5) // 120
+end

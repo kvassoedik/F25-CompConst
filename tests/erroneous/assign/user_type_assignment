@@ -1,3 +1,6 @@
 type T is array[1] integer
 var a: T
-a := 1 // should throw, type mismatch
+
+routine main() is
+	a := 1 // should throw, type mismatch
+end

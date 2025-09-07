@@ -1,12 +1,14 @@
-print 0.1 = .1
-print .1 = .10
-print 1.0 = 1.
-print .00005
-print .00005 > .0
-print .0 = 0.
+routine main() is
+    print 0.1 = .1
+    print .1 = .10
+    print 1.0 = 1.
+    print .00005
+    print .00005 > .0
+    print .0 = 0.
 
-var x is 0.1
-var y is .10
+    var x is 0.1
+    var y is .10
 
-print x // 0.1
-print 0-y // -0.1
+    print x // 0.1
+    print 0-y // -0.1
+end

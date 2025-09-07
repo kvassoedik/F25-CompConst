@@ -2,20 +2,22 @@ var int: integer
 var re: real
 var bool: boolean
 
-int := 1; print int // 1
-int := 2.1; print int // 2
-int := 2.5; print int // 3
-int := 0.99; print int // 1
-int := false; print int // 0
-int := true; print int // 1
-print
+routine main() is
+	int := 1; print int // 1
+	int := 2.1; print int // 2
+	int := 2.5; print int // 3
+	int := 0.99; print int // 1
+	int := false; print int // 0
+	int := true; print int // 1
+	print
 
-re := .1000; print re // 0.1
-re := 2; print re // 2.0
-re := true; print re // 1.0
-re := false; print re // 0.0
-print
+	re := .1000; print re // 0.1
+	re := 2; print re // 2.0
+	re := true; print re // 1.0
+	re := false; print re // 0.0
+	print
 
-bool := true; print bool // true
-bool := int - 1; print bool // false
-bool := int; print bool // true
+	bool := true; print bool // true
+	bool := int - 1; print bool // false
+	bool := int; print bool // true
+end

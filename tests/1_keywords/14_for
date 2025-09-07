@@ -1,20 +1,22 @@
-for x in 0..9 loop
-    print x + 1
-end
+routine main() is
+    for x in 0..9 loop
+        print x + 1
+    end
 
-for x in 0..9 reverse loop
-    print x + 1
-end
+    for x in 0..9 reverse loop
+        print x + 1
+    end
 
-var a: array[3] integer
-for i in a loop
-    a[i] := i*2
-end
-for i in a loop
-    print a[i]
-end
-for i in a reverse loop
-    print a[i]
+    var a: array[3] integer
+    for i in a loop
+        a[i] := i*2
+    end
+    for i in a loop
+        print a[i]
+    end
+    for i in a reverse loop
+        print a[i]
+    end
 end
 
 /* Output:

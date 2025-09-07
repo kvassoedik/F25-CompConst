@@ -10,4 +10,7 @@ routine func(a: array[]) is
         print a[i]
     end
 end
-func(a)
+
+routine main() is
+    func(a)
+end

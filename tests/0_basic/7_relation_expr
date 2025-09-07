@@ -1,18 +1,20 @@
 var x is 10
 var y is 20
 
-print x = y // false
-print x > y // false 
-print x < y // true
-print y > x // true
-print y < x // false
-print
-print x >= 2 // true
-print x >= 10 // true
-print x > 10 // false
-print x < -10 // false
-print
-print 0-x <= -10 // true
-print x = x + 0 - 0 // true
-print
-print .1 > .09 // true
+routine main() is
+    print x = y // false
+    print x > y // false 
+    print x < y // true
+    print y > x // true
+    print y < x // false
+    print
+    print x >= 2 // true
+    print x >= 10 // true
+    print x > 10 // false
+    print x < -10 // false
+    print
+    print 0-x <= -10 // true
+    print x = x + 0 - 0 // true
+    print
+    print .1 > .09 // true
+end

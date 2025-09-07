@@ -1,2 +1,5 @@
 var a: array[5] integer
-print a[0] // should throw, out-of-bounds
+
+routine main() is
+    print a[0] // should throw, out-of-bounds
+end

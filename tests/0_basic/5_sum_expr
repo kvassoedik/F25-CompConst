@@ -1,18 +1,20 @@
-print 2 + 2 // 4
+routine main() is
+    print 2 + 2 // 4
 
-var x is 1
-var y is 2
-var z is .1
-var v is 1.
+    var x is 1
+    var y is 2
+    var z is .1
+    var v is 1.
 
-print x + y // 3
-print -1 + y // 1
-print not 1 + y // 1
-print x - not 2 // 3
-print x-y // -1
-print x+y+1 // 4
-print x + y - x // 1
-print z + v // 1.1
-print 0 - z + v // 0.9
-print 0-z - 0-v // -1.1
-print 0-z- 0+v // 0.9
+    print x + y // 3
+    print -1 + y // 1
+    print not 1 + y // 1
+    print x - not 2 // 3
+    print x-y // -1
+    print x+y+1 // 4
+    print x + y - x // 1
+    print z + v // 1.1
+    print 0 - z + v // 0.9
+    print 0-z - 0-v // -1.1
+    print 0-z- 0+v // 0.9
+end

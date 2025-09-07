@@ -1,7 +1,9 @@
-print true
-print false
-print
-print 10
+routine main() is
+    print true
+    print false
+    print
+    print 10
 
-var x is 15
-print x
+    var x is 15
+    print x
+end

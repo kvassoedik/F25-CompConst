@@ -5,25 +5,27 @@ end
 
 type Arr is array[5] real
 
-var h1: House
-h1.a := 5
-h1.b := 6
+routine main() is
+    var h1: House
+    h1.a := 5
+    h1.b := 6
 
-var h2 is h1
-print h2.a // 5
-print h2.b // 6
+    var h2 is h1
+    print h2.a // 5
+    print h2.b // 6
 
-h1.a := 7
-h2.b := 8
-print h2.a // 7
-print h1.b // 8
+    h1.a := 7
+    h2.b := 8
+    print h2.a // 7
+    print h1.b // 8
 
-routine func(h: House): House is
-    var h1 is h
-    print h1.a
-    return h
+    routine func(h: House): House is
+        var h1 is h
+        print h1.a
+        return h
+    end
+
+    var i is func(h1).b // prints 7, assigns 8
+    h1.b := 9
+    print i // 8
 end
-
-var i is func(h1).b // prints 7, assigns 8
-h1.b := 9
-print i // 8

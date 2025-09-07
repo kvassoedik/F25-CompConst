@@ -10,8 +10,10 @@ type LinkedList is record
     var prev: LinkedList
 end
 
-var ll: LinkedList
-ll.val := 5
+routine main() is
+    var ll: LinkedList
+    ll.val := 5
 
-var ll2: LinkedList
-ll.next := ll2
+    var ll2: LinkedList
+    ll.next := ll2
+end

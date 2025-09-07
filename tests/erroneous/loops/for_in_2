@@ -1,3 +1,5 @@
-for i in 0 loop // should throw, invalid syntax
-    print i
+routine main() is
+    for i in 0 loop // should throw, invalid syntax
+        print i
+    end
 end

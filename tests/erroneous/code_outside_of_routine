@@ -1,0 +1,7 @@
+var x is 1
+x := 2 // should throw, cannot have instructions outside of routines
+
+routine main() is
+    var a is 1
+    print a
+end

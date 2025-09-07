@@ -1,4 +1,7 @@
 var r: record var i is 2 end
-for i in r loop // should throw, cannot loop over a record
-    print i
+
+routine main() is
+    for i in r loop // should throw, cannot loop over a record
+        print i
+    end
 end

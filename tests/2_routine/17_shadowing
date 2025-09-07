@@ -7,5 +7,8 @@ routine func() is
     myvar = myvar / 2
     print myvar
 end
-print myvar
-func()
+
+routine main() is
+    print myvar
+    func()
+end

@@ -1,2 +1,5 @@
 var a is (var b is 0) // should throw, declaration in an expression is not permitted
-print a
+
+routine main() is
+    print a
+end

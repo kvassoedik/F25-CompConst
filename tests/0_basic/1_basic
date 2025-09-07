@@ -3,6 +3,8 @@ var y1y: boolean
 var my_variable is 5
 // this is a comment
 
-y1y := x = my_variable // true; comments should not affect the program
-print y1y
-print x = my_variable
+routine main() is
+    y1y := x = my_variable // true; comments should not affect the program
+    print y1y
+    print x = my_variable
+end

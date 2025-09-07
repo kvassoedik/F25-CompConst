@@ -1,30 +1,32 @@
 var x is record var num is 0 var bool is false end
 
-x.num := x.num - 1
-x.bool := true xor false
+routine main() is
+	x.num := x.num - 1
+	x.bool := true xor false
 
-print x.num // -1
-print x.bool // true
-print x.bool xor true // false
-print (x.bool and true) or false // true
-print x.bool = false // false
+	print x.num // -1
+	print x.bool // true
+	print x.bool xor true // false
+	print (x.bool and true) or false // true
+	print x.bool = false // false
 
-type House is record
-	var a is 1
-	var b is 2
-end
-
-var h: House
-print h.a // 1
-print h.b // 2
-h.b := h.a
-print h.b // 1
-
-// Nested records
-var r is record
-	var r2: record
-		var x is 10
+	type House is record
+		var a is 1
+		var b is 2
 	end
-	var y is 12
+
+	var h: House
+	print h.a // 1
+	print h.b // 2
+	h.b := h.a
+	print h.b // 1
+
+	// Nested records
+	var r is record
+		var r2: record
+			var x is 10
+		end
+		var y is 12
+	end
+	print r.r2.x // 10
 end
-print r.r2.x // 10

@@ -3,5 +3,7 @@ var y is 20
 var z is 0-x
 
 // Primary on integers
-print x // 10
-print z // -10
+routine main() is
+    print x // 10
+    print z // -10
+end

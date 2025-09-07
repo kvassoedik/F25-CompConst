@@ -1,2 +1,5 @@
 var b: boolean
-b := 1. // should throw at compile time
+
+routine main() is
+	b := 1. // should throw at compile time
+end

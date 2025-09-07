@@ -3,19 +3,21 @@ type intArr is array[5] integer
 var X: intArr
 var Y: array[2] boolean
 
-var i is 1
-while i < 5 loop
-	X[i] := i
-	if i <= 2 then
-		Y[i] := i+10
+routine main() is
+	var i is 1
+	while i < 5 loop
+		X[i] := i
+		if i <= 2 then
+			Y[i] := i+10
+		end
 	end
-end
 
-i := 1
-while i <= 5 loop
-	print X[i]
-	if i <= 2 then
-		print Y[i]
+	i := 1
+	while i <= 5 loop
+		print X[i]
+		if i <= 2 then
+			print Y[i]
+		end
 	end
 end
 

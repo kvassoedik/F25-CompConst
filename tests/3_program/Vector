@@ -4,6 +4,21 @@ type Vector is record
     var arr: array[2] integer
 end
 
+routine push(v: Vector, val: integer): boolean
+routine pop(v: Vector): boolean
+
+routine main() is
+    var v: Vector
+    print push(v, 10) // true
+    print push(v, -15) // true
+    print push(v, 25) // false
+    print
+    print pop(v) // true
+    for i in v loop print v.arr[i] end // 10 0
+    print pop(v) // true
+    print pop(v) // false
+end
+
 routine push(v: Vector, val: integer): boolean is
     if v.size + 1 > v.reserved then
         return false
@@ -23,13 +38,3 @@ routine pop(v: Vector): boolean is
 
     return true
 end
-
-var v: Vector
-print push(v, 10) // true
-print push(v, -15) // true
-print push(v, 25) // false
-print
-print pop(v) // true
-for i in v loop print v.arr[i] end // 10 0
-print pop(v) // true
-print pop(v) // false
