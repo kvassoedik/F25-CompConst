@@ -1,0 +1,13 @@
+var a: array[5] boolean
+
+// NOTE: if a was a member of a record, and the record was a param to a function, this wouldn't work?
+routine func(a: array[]) is
+    print a.size // 5
+    for i in 1..a.size loop
+        a[i] := i-1
+    end
+    for i in a loop
+        print a[i]
+    end
+end
+func(a)

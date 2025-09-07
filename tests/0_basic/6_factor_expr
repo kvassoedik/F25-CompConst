@@ -1,0 +1,19 @@
+var x is 10
+var y is 2
+
+print x / y // 5
+print y / x // 0
+print x /2 // 5
+print y/2 // 1
+print x/2. // 5.0
+
+print x*y // 20
+print x*2 // 20
+print x*2. // 20.0
+print y*-2 // -4
+print y*+2 // 4
+
+// Factor
+print x%2 // 0
+print x%2. // 0.0
+print x %y // 0

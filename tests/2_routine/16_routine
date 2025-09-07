@@ -1,0 +1,27 @@
+routine print1() is
+    print 1
+end
+print1()
+
+routine get2 => 2
+
+routine printl_int(param: integer): integer is
+    print param
+    print
+    return param
+end
+
+printl_int(get2())
+
+// true false
+routine forwardFunc(a: boolean, b: boolean)
+routine my_xor(a: boolean, b: boolean): boolean is
+    forwardFunc(a, b)
+    return a xor b 
+end
+
+routine forwardFunc(a: boolean, b: boolean) is
+    print a
+    print b
+end
+my_xor(true, false)

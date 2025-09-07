@@ -1,0 +1,14 @@
+There was nothing mentioned about instruction separators except for declarations:
+"Declarations are separated from each other by “new line” characters or by
+semicolons."
+
+Non-initialized vars are always zero (0, 0.0, false)
+Non-initialized records have their members zeroed
+
+Questions:
+What is "/=" operand in relation?
+What should (x := y) return in an expression?
+Array dot size should always be valid?
+
+Additionals:
+break, signs in front of variables, strings, array init, array out-of-bounds, logical negation

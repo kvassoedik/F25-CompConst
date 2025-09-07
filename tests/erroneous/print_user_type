@@ -1,0 +1,2 @@
+var t: record var i is 1 end
+print t // should throw, cannot print user types

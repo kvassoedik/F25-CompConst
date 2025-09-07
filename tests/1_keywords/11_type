@@ -1,0 +1,5 @@
+type my_type123 is integer
+var x: my_type123 is 20
+var x is 20
+
+print x = x

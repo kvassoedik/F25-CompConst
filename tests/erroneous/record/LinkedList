@@ -1,0 +1,17 @@
+/*
+    All records are allocated when the program starts running.
+    There's no mechanism for pointers, allocating and deallocating records.
+    Therefore, recursive records (cointaining variables of the same record type) are prohibited
+*/
+
+type LinkedList is record
+    var val: integer
+    var next: LinkedList // should throw
+    var prev: LinkedList
+end
+
+var ll: LinkedList
+ll.val := 5
+
+var ll2: LinkedList
+ll.next := ll2

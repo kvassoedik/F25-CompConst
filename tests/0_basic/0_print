@@ -1,0 +1,7 @@
+print true
+print false
+print
+print 10
+
+var x is 15
+print x

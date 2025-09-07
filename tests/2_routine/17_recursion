@@ -1,0 +1,7 @@
+routine fact(num: integer): integer is
+    if num <= 1 then return 1 end
+    return num * fact(num - 1)
+end
+
+print fact(2) // 2
+print fact(5) // 120

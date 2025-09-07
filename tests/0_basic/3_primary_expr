@@ -1,0 +1,7 @@
+var x is 10
+var y is 20
+var z is 0-x
+
+// Primary on integers
+print x // 10
+print z // -10

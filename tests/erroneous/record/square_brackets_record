@@ -1,0 +1,3 @@
+var r: record var a: array[1] boolean end
+r.a[1] := 5
+print r[1] * 2 // should throw, square brackets used on non-array type

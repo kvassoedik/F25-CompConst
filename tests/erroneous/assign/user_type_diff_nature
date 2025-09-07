@@ -1,0 +1,6 @@
+type T is array[1] integer
+
+var a: array[1] integer
+var b: T
+
+a := b // should throw, type mismatch (definitely not lazy :0)

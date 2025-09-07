@@ -1,0 +1,25 @@
+type obj is
+	var x is 1
+	var y: real
+end
+
+routine clone(o: obj): obj is
+	var new: obj
+	new.x := o.x
+	new.y := o.y
+
+	return new
+end
+
+var o: obj
+o.x := 6
+o.y := 75.9
+
+var o2 is clone(o)
+print o2.x // 6
+print o2.y // 75.9
+
+// Also testing shadowing + record member access here
+o.x := 100
+routine func(o: obj): obj => o
+print func(o2).x // 6

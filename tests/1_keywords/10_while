@@ -1,0 +1,28 @@
+var x is 0
+
+while x < 10 loop
+    x = x + 1
+    print x
+end
+
+while false loop
+    print 1000
+end
+
+var y is 0
+x := 0
+while x < 2 loop
+    while y < 5 loop
+        print y + 10
+        y = y + 1
+    end
+    x = x + 1
+    print x
+end
+
+/* Output:
+1..10
+10 20 30 40
+1
+2
+*/

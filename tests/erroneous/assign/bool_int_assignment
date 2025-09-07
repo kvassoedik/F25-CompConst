@@ -1,0 +1,6 @@
+var b: boolean
+b := 2 // should throw at compile time
+
+for i in 0..10 loop
+	b := i // should throw at run time
+end

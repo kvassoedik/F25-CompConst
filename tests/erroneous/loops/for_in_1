@@ -1,0 +1,3 @@
+for i: boolean in 0..10 loop // should throw, cannot cast in for loop declaration
+    print i
+end

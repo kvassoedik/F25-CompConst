@@ -1,0 +1,2 @@
+var b: boolean
+b := 1. // should throw at compile time
