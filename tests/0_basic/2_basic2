@@ -2,6 +2,7 @@ var x: integer is 2; var y1y:boolean  is  true//comment
  var my_variable is   5
 //              another comment
 //print x
-  var z: x =y1y;print/*I am a comment!*/ z;routine main() is
+  var z: x =y1y;print/*I am a comment!*/z;routine main() is
 print z = y1y;print; print z
 /*print z*//* yet another comment  123 234*/end
+/*Almost nested /*comment*/print 100

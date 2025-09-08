@@ -1,0 +1,52 @@
+#pragma once
+
+enum class TokenType: unsigned int {
+    INVALID = 0,
+
+    Identifier = 1,
+    Int = 2,
+    Real = 3,
+    Bool = 4,
+    Comment = 5,
+    Space = 6,
+
+    // Keywords
+    True = 7,
+    False = 8,
+    Routine = 9,
+    Is = 10,
+    Print = 11,
+    Var = 12,
+    If = 13,
+    Else = 14,
+    While = 15,
+    For = 16,
+    Loop = 17,
+    Reverse = 18,
+    And = 19,
+    Or = 20,
+    Xor = 21,
+    Array = 22,
+    Record = 23,
+    End = 24,
+
+    // Expressions
+    ASSIGNMENT = 25,
+    EQUAL = 26,
+    LESS_THAN = 27,
+    LESS_OR_EQUAL = 28,
+    MORE_THAN = 29,
+    MORE_OR_EQUAL = 30,
+    PLUS = 31,
+    MINUS = 32,
+    TIMES = 33,
+    DIVIDE = 34,
+    SQUARE_BRACKET_OPEN = 35,
+    SQUARE_BRACKET_CLOSE = 36,
+    BRACKET_OPEN = 37,
+    BRACKET_CLOSE = 38,
+    COLON = 39,
+    DOT = 40,
+    COMMA = 41,
+    ROUTINE_ARROW = 42,
+};
