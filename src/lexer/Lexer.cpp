@@ -30,19 +30,17 @@ static std::unordered_map<std::string, TokenType> KEYWORDS
 };
 
 bool Lexer::openFile(char* fileName) {
-    auto&& file = std::make_unique<std::ifstream>();
+    auto file = std::make_unique<std::ifstream>();
     file->open(fileName, std::ios::in);
     if (!file->is_open()) return false;
 
     lineNum_ = 1;
-    lineStartPos_ = 0;
-    posInLine_ = 0;
     currTkStart_ = 0;
     file_.swap(file);
     return true;
 }
 
-Tokens::BaseTk Lexer::nextToken(bool& ret_eof) {
+std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(bool& ret_eof) {
     std::string acc;
     int byte;
 
@@ -50,7 +48,6 @@ Tokens::BaseTk Lexer::nextToken(bool& ret_eof) {
         unsigned char c = byte;
         std::cout << "Parsing symbol " << c << " (" << static_cast<int>(c) << ")\n";
 
-        posInLine_++;
         if (isLetter(c) || isDigit(c)) {
             acc += c;
         } else {
@@ -77,28 +74,27 @@ Tokens::BaseTk Lexer::nextToken(bool& ret_eof) {
                 // Process the previously stored word first, this delimiter will be parsed later
                 file_->seekg(-1, std::ios::cur);
 
-                Tokens::BaseTk tk = getTokenFromWord(acc);
-                initToken(tk);
+                auto tk = getTokenFromWord(acc);
+                initToken(*tk);
                 return tk;
             }
 
             if (c == 10 || c == 13) { // Line Feed + Carriage Return
-                // If either of them is following after, skip over them
-                if ((byte = file_->get()) == EOF) {
-                    ret_eof = true;
-                } else {
-                    char c2;
-                    if ((c2 = static_cast<unsigned int>(byte)) != 10 && c2 != 13) {
-                        file_->seekg(-1, std::ios::cur);
+                // If it's Windows notation (CRLF), skip over both characters
+                if (c == 13) {
+                    if ((byte = file_->get()) == EOF) {
+                        ret_eof = true;
+                    } else {
+                        char c2;
+                        if ((c2 = static_cast<unsigned int>(byte)) != 13) {
+                            throwError("Encountered Carriage Return without Line Feed");
+                        }
                     }
                 }
 
-                Tokens::BaseTk tk(TokenType::Space);
-                initToken(tk);
-
+                auto tk = std::make_unique<Tokens::BaseTk>(TokenType::Space);
+                initToken(*tk);
                 lineNum_++;
-                lineStartPos_ = file_->tellg();
-                posInLine_ = 0;
 
                 return tk;
             }
@@ -110,50 +106,53 @@ Tokens::BaseTk Lexer::nextToken(bool& ret_eof) {
                     + " (ASCII: " + std::to_string(static_cast<int>(c)) + ")"
                 );
 
-            Tokens::BaseTk tk(type);
-            initToken(tk);
+            auto tk = std::make_unique<Tokens::BaseTk>(type);
+            initToken(*tk);
             return tk;
         }
     }
 
     ret_eof = true;
-    if (acc.size() == 0)
-        return Tokens::BaseTk(TokenType::Space);
 
-    Tokens::BaseTk tk = getTokenFromWord(acc);
-    initToken(tk);
+    size_t len = acc.size();
+    if (len == 0)
+        return std::make_unique<Tokens::BaseTk>(TokenType::Space);
+    
+    auto tk = getTokenFromWord(acc);
+    initToken(*tk);
+    tk->span.end = tk->span.start + len-1; // tellg() will return a garbage number due to EOF, set end manually
     return tk;
 }
 
-std::vector<Tokens::BaseTk> Lexer::scan() {
+std::vector<std::unique_ptr<Tokens::BaseTk>> Lexer::scan() {
     if (!file_)
         throwError("No opened file.");
 
-    std::vector<Tokens::BaseTk> tokens;
+    std::vector<std::unique_ptr<Tokens::BaseTk>> tokens;
     bool eof = false;
 
     do {
-        Tokens::BaseTk tk = nextToken(eof);
-        std::cout << "New token: " << tk << "\n\n";
-        tokens.push_back(std::move(tk));
+        auto tk = nextToken(eof);
+        std::cout << "New token: " << *tk << "\n\n";
+        tokens.emplace_back(std::move(tk));
     } while (!eof);
 
     return tokens;
 }
 
-Tokens::BaseTk Lexer::getTokenFromWord(std::string word) {
+std::unique_ptr<Tokens::BaseTk> Lexer::getTokenFromWord(std::string& word) {
     std::cout << "Parsing word: " << word << "\n";
 
     auto kw = KEYWORDS.find(word);
-    if (kw != KEYWORDS.end()) return Tokens::BaseTk(kw->second);
+    if (kw != KEYWORDS.end()) return std::make_unique<Tokens::BaseTk>(kw->second);
 
     if (isDigit(word[0]) || word[0] == '.') {
         bool isReal = false;
-        unsigned mult = 0;
+        int mult = 0;
 
         for (char c: word) {
             if (isDigit(c)) {
-                if (!isReal) mult <<= 1;
+                if (!isReal) mult++;
                 continue;
             };
             if (c == '.') {
@@ -167,27 +166,27 @@ Tokens::BaseTk Lexer::getTokenFromWord(std::string word) {
 
         // Extracting the number
         if (isReal) {
-            Tokens::RealTk tk;
+            double value = 0;
             for (char c: word) {
                 if (c != '.') {
-                    tk.value += (c - 48) * pow(10, mult-1);
+                    value += (c - 48) * pow(10, mult-1);
                     mult >>= 1;
                 }
             }
 
-            return tk;
+            return std::make_unique<Tokens::RealTk>(value);
         } else {
-            Tokens::IntTk tk;
+            long value = 0;
             for (char c: word) {
-                tk.value += (c - 48) * pow(10, mult-1);
-                mult >>= 1;
+                value += (c - 48) * pow(10, mult-1);
+                mult -= 1;
             }
 
-            return tk;
+            return std::make_unique<Tokens::IntTk>(value);
         }
     }
 
-    return Tokens::IdentifierTk(std::move(word));
+    return std::make_unique<Tokens::IdentifierTk>(std::move(word));
 }
 
 void Lexer::initToken(Tokens::BaseTk& tk) {

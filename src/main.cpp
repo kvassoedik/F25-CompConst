@@ -17,7 +17,7 @@ int main(int argc, char **argv) {
         return 2;
     }
 
-    std::vector<Tokens::BaseTk> tokens;
+    std::vector<std::unique_ptr<Tokens::BaseTk>> tokens;
     try {
         tokens = lexer.scan();
     } catch(std::runtime_error e) {
@@ -26,7 +26,6 @@ int main(int argc, char **argv) {
     }
 
     for (auto& t: tokens) {
-        t.print(std::cout);
-        std::cout << "\n";
+        std::cout << *t << "\n";
     }
 }

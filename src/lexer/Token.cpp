@@ -8,20 +8,20 @@ std::ostream& operator<<(std::ostream &os, const Tokens::BaseTk& o) {
 
 void Tokens::BaseTk::print(std::ostream& os) const {
     os << "BaseTk{ " << static_cast<unsigned int>(type)
-        << " (l" << span.line << " " << span.start << ":" << span.end << ") }";
+        << " (_" << span.line << " " << span.start << ":" << span.end << ") }";
 }
 
 void Tokens::IdentifierTk::print(std::ostream& os) const {
     os << "IdentifierTk{ " << identifier
-        << " (l" << span.line << " " << span.start << ":" << span.end << ") }";
+        << " (_" << span.line << " " << span.start << ":" << span.end << ") }";
 }
 
 void Tokens::IntTk::print(std::ostream& os) const {
-    os << "IdentifierTk{ " << value
-        << " (l" << span.line << " " << span.start << ":" << span.end << ") }";
+    os << "IntTk{ " << value
+        << " (_" << span.line << " " << span.start << ":" << span.end << ") }";
 }
 
 void Tokens::RealTk::print(std::ostream& os) const {
-    os << "IdentifierTk{ " << value
-        << " (l" << span.line << " " << span.start << ":" << span.end << ") }";
+    os << "RealTk{ " << value
+        << " (_" << span.line << " " << span.start << ":" << span.end << ") }";
 }
