@@ -4,7 +4,7 @@
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
-#include <math.h>
+#include <cmath>
 #include <sstream>
 
 static std::unordered_map<std::string, TokenType> KEYWORDS
@@ -61,8 +61,9 @@ std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(bool& ret_eof) {
                 } else {
                     int byte;
                     if ((byte = file_->get()) != EOF && isDigit(static_cast<unsigned char>(byte))) {
-                        // This is a real literal
+                        // This is a real literal. Add both this dot and the following char and move on
                         acc += c;
+                        acc += static_cast<unsigned char>(byte);
                         continue;
                     } else {
                         file_->seekg(-1, std::ios::cur); // It's not a real, go back and let the dot be handled
@@ -141,51 +142,72 @@ std::vector<std::unique_ptr<Tokens::BaseTk>> Lexer::scan() {
 }
 
 std::unique_ptr<Tokens::BaseTk> Lexer::getTokenFromWord(std::string& word) {
-    std::cout << "Parsing word: " << word << "\n";
+    if (word.empty())
+        throw std::runtime_error("cannot lex an empty word");
+    std::cout << "Lexing word: " << word << "\n";
 
+    // If found in keyword map, it's a Keyword
     auto kw = KEYWORDS.find(word);
     if (kw != KEYWORDS.end()) return std::make_unique<Tokens::BaseTk>(kw->second);
 
+    // If has a digit or dot at the front, it's a number
     if (isDigit(word[0]) || word[0] == '.') {
         bool isReal = false;
-        int mult = 0;
 
-        for (char c: word) {
-            if (isDigit(c)) {
-                if (!isReal) mult++;
-                continue;
-            };
+        for (unsigned char c: word) {
             if (c == '.') {
                 if (isReal)
-                    throwError("Real literal with multiple dots encountered");
+                    throwError("real literal with multiple dots encountered");
                 isReal = true;
-            } else {
-                throwError("Invalid number form containing a letter");
+            } else if (!isDigit(c)) {
+                throwError("invalid number form containing a letter");
             }
         }
 
         // Extracting the number
         if (isReal) {
             double value = 0;
-            for (char c: word) {
-                if (c != '.') {
-                    value += (c - 48) * pow(10, mult-1);
-                    mult >>= 1;
-                }
+            size_t dotPos;
+
+            for (dotPos = 0; dotPos < word.size(); ++dotPos) {
+                unsigned char c = word[dotPos];
+                if (c == '.') break;
+
+                unsigned char digit = c - '0';
+                if (value > std::numeric_limits<double>::max() - digit
+                    || value + digit > std::numeric_limits<double>::max() / 10)
+                    throwError("real literal exceeded max limit");
+
+                value = value * 10 + digit;
             }
 
-            return std::make_unique<Tokens::RealTk>(value);
+            double residue = 0;
+            for (size_t i = word.size()-1; i > dotPos; --i) {
+                residue = (residue + (word[i] - '0'))/10.0;
+            }
+
+            if (value > std::numeric_limits<double>::max() - residue)
+                throwError("real literal exceeded max limit when applying denorm");
+
+            return std::make_unique<Tokens::RealTk>(value + residue);
         } else {
             long value = 0;
-            for (char c: word) {
-                value += (c - 48) * pow(10, mult-1);
-                mult -= 1;
+            
+            for (unsigned char c: word) {
+                unsigned char digit = c - '0';
+
+                if (value > std::numeric_limits<long>::max() - digit
+                    || value + digit > std::numeric_limits<long>::max() / 10 + 7)
+                    throwError("integer literal exceeded max limit");
+
+                value = value * 10 + digit;
             }
 
             return std::make_unique<Tokens::IntTk>(value);
         }
     }
 
+    // Otherwise, its an identifier
     return std::make_unique<Tokens::IdentifierTk>(std::move(word));
 }
 
