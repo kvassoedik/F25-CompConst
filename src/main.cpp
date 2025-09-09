@@ -8,7 +8,7 @@ int main(int argc, char **argv) {
     }
 
     // Proccess flags
-    char* fileName = argv[argc - 1];\
+    char* fileName = argv[argc - 1];
 
     // Lexer stage
     Lexer lexer;
@@ -25,7 +25,8 @@ int main(int argc, char **argv) {
         return 3;
     }
 
-    for (auto&& t: tokens) {
-        std::cout << t << "\n";
+    for (auto& t: tokens) {
+        t.print(std::cout);
+        std::cout << "\n";
     }
 }

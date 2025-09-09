@@ -77,7 +77,7 @@ Tokens::BaseTk Lexer::nextToken(bool& ret_eof) {
                 // Process the previously stored word first, this delimiter will be parsed later
                 file_->seekg(-1, std::ios::cur);
 
-                Tokens::BaseTk tk = getTokenFromWord(std::move(acc));
+                Tokens::BaseTk tk = getTokenFromWord(acc);
                 initToken(tk);
                 return tk;
             }
@@ -120,7 +120,7 @@ Tokens::BaseTk Lexer::nextToken(bool& ret_eof) {
     if (acc.size() == 0)
         return Tokens::BaseTk(TokenType::Space);
 
-    Tokens::BaseTk tk = getTokenFromWord(std::move(acc));
+    Tokens::BaseTk tk = getTokenFromWord(acc);
     initToken(tk);
     return tk;
 }
@@ -134,14 +134,14 @@ std::vector<Tokens::BaseTk> Lexer::scan() {
 
     do {
         Tokens::BaseTk tk = nextToken(eof);
-        std::cout << "New token: " << static_cast<unsigned>(tk.type) << "\n\n";
-        tokens.push_back(tk);
+        std::cout << "New token: " << tk << "\n\n";
+        tokens.push_back(std::move(tk));
     } while (!eof);
 
     return tokens;
 }
 
-Tokens::BaseTk Lexer::getTokenFromWord(const std::string& word) {
+Tokens::BaseTk Lexer::getTokenFromWord(std::string word) {
     std::cout << "Parsing word: " << word << "\n";
 
     auto kw = KEYWORDS.find(word);

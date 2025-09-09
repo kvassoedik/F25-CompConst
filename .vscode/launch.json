@@ -1,0 +1,14 @@
+{
+    "version": "2.0.0",
+    "configurations": [
+        {
+            "program": "${workspaceRoot}/build/silcc",
+            "name": "Debug",
+            "type": "cppdbg",
+            "request": "launch",
+            "cwd": "${workspaceRoot}",
+            "preLaunchTask": "build",
+            "args": ["tests/0_basic/4_real"]
+        }
+    ]
+}

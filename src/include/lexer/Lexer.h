@@ -1,3 +1,7 @@
+/*
+    Visit website for ascii codes of characters: https://www.ascii-code.com/
+*/
+
 #pragma once
 
 #include "lexer/Token.h"
@@ -15,7 +19,7 @@ public:
 
 private:
     Tokens::BaseTk nextToken(bool& ret_eof);
-    Tokens::BaseTk getTokenFromWord(const std::string& word);
+    Tokens::BaseTk getTokenFromWord(std::string word);
     TokenType getDelimiterType(char c);
     void initToken(Tokens::BaseTk& tk);
     void throwError(std::string reason);

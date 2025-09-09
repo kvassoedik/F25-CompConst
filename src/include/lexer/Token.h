@@ -12,18 +12,20 @@ namespace Tokens {
     struct BaseTk {
         BaseTk() = delete;
         BaseTk(TokenType type): type(type) {}
+        virtual ~BaseTk() = default;
+        virtual void print(std::ostream& os) const;
 
-        const TokenType type;
         Span span;
+        const TokenType type;
     };
 
     struct IdentifierTk : BaseTk {
-        IdentifierTk():
-            BaseTk(TokenType::Identifier) {}
+        IdentifierTk() = delete;
         IdentifierTk(std::string id):
             BaseTk(TokenType::Identifier), identifier(std::move(id)) {}
+        void print(std::ostream& os) const override;
 
-        std::string identifier;
+        const std::string identifier;
     };
 
     struct IntTk : public BaseTk {
@@ -31,6 +33,7 @@ namespace Tokens {
             BaseTk(TokenType::Int) {}
         IntTk(long value):
             BaseTk(TokenType::Int), value(value) {}
+        void print(std::ostream& os) const override;
 
         TokenType type{TokenType::Int};
         long value{0};
@@ -41,6 +44,7 @@ namespace Tokens {
             BaseTk(TokenType::Real) {}
         RealTk(double value):
             BaseTk(TokenType::Real), value(value) {}
+        void print(std::ostream& os) const override;
 
         TokenType type{TokenType::Real};
         double value{0};
@@ -48,6 +52,3 @@ namespace Tokens {
 }
 
 std::ostream& operator<<(std::ostream &os, const Tokens::BaseTk &o);
-std::ostream& operator<<(std::ostream& os, const Tokens::IdentifierTk &o);
-std::ostream& operator<<(std::ostream& os, const Tokens::IntTk &o);
-std::ostream& operator<<(std::ostream& os, const Tokens::RealTk &o);
