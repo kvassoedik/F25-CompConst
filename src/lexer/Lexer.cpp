@@ -27,6 +27,9 @@ static std::unordered_map<std::string, TokenType> KEYWORDS
     {"array", TokenType::Array},
     {"record", TokenType::Record},
     {"end", TokenType::End},
+    {"integer", TokenType::IntegerType},
+    {"real", TokenType::RealType},
+    {"boolean", TokenType::BooleanType},
 };
 
 bool Lexer::openFile(char* fileName) {
@@ -36,8 +39,32 @@ bool Lexer::openFile(char* fileName) {
 
     lineNum_ = 1;
     currTkStart_ = 0;
+    comment_.isStarted = false;
+    comment_.isMultiline = false;
     file_.swap(file);
     return true;
+}
+
+std::vector<std::unique_ptr<Tokens::BaseTk>> Lexer::scan() {
+    if (!file_)
+        throwError("No opened file.");
+
+    std::vector<std::unique_ptr<Tokens::BaseTk>> tokens;
+    bool eof = false;
+
+    do {
+        auto tk = nextToken(eof);
+        if (canLog(1)) std::cout << "* New token: " << *tk << "\n";
+
+        if (static_cast<unsigned int>(tk->type) > 8 ||
+            (static_cast<unsigned int>(tk->type) > 2 && static_cast<unsigned int>(tk->type) < 5))
+        {
+            // Don't include spaces and comments
+            tokens.emplace_back(std::move(tk));
+        }
+    } while (!eof);
+
+    return tokens;
 }
 
 std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(bool& ret_eof) {
@@ -46,7 +73,37 @@ std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(bool& ret_eof) {
 
     while ((byte = (file_->get())) != EOF) {
         unsigned char c = byte;
-        std::cout << "Parsing symbol " << c << " (" << static_cast<int>(c) << ")\n";
+
+        // Check if currently inside a comment
+        if (comment_.isStarted) {
+            if (comment_.isMultiline) {
+                TokenType type = getDelimiterType(c);
+                if (type != TokenType::COMMENT_CLOSE) {
+                    // Accumulate comment
+                    acc += c;
+                    continue;
+                }
+
+                file_->seekg(-2, std::ios::cur); // little hardcode for the length of "*/" token
+            } else {
+                char endlineNum = processEndline(c);
+                if (!endlineNum) {
+                    // Accumulate comment
+                    acc += c;
+                    continue;
+                }
+                // Endline has been hit, seek back to process the endline again after
+                file_->seekg(-endlineNum, std::ios::cur);
+                comment_.isStarted = false;
+            }
+            
+            auto tk = std::make_unique<Tokens::BaseTk>(TokenType::COMMENT_BODY);
+#if SAVE_TOKEN_STRING
+            tk->_str = std::move(acc);
+#endif
+            initToken(*tk);
+            return tk;
+        }
 
         if (isLetter(c) || isDigit(c)) {
             acc += c;
@@ -77,26 +134,22 @@ std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(bool& ret_eof) {
 
                 auto tk = getTokenFromWord(acc);
                 initToken(*tk);
+#if SAVE_TOKEN_STRING
+                if (tk->type != TokenType::Identifier && tk->type != TokenType::IntLiteral
+                    && tk->type != TokenType::RealLiteral && tk->type != TokenType::BoolLiteral) {
+                    tk->_str = std::move(acc);
+                }
+#endif
                 return tk;
             }
 
-            if (c == 10 || c == 13) { // Line Feed + Carriage Return
-                // If it's Windows notation (CRLF), skip over both characters
-                if (c == 13) {
-                    if ((byte = file_->get()) == EOF) {
-                        ret_eof = true;
-                    } else {
-                        char c2;
-                        if ((c2 = static_cast<unsigned int>(byte)) != 13) {
-                            throwError("Encountered Carriage Return without Line Feed");
-                        }
-                    }
-                }
-
-                auto tk = std::make_unique<Tokens::BaseTk>(TokenType::Space);
+            if (processEndline(c)) {
+                auto tk = std::make_unique<Tokens::BaseTk>(TokenType::ENDLINE);
                 initToken(*tk);
                 lineNum_++;
-
+#if SAVE_TOKEN_STRING
+                tk->_str = "\\n";
+#endif
                 return tk;
             }
 
@@ -109,42 +162,37 @@ std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(bool& ret_eof) {
 
             auto tk = std::make_unique<Tokens::BaseTk>(type);
             initToken(*tk);
+#if SAVE_TOKEN_STRING
+            if (type != TokenType::ENDLINE) {
+                tk->_str = c;
+            }
+#endif
             return tk;
         }
     }
 
     ret_eof = true;
+    if (canLog(1)) std::cout << "==> REACHED EOF <==\n";
 
     size_t len = acc.size();
     if (len == 0)
-        return std::make_unique<Tokens::BaseTk>(TokenType::Space);
+        return std::make_unique<Tokens::BaseTk>(TokenType::SPACE);
     
     auto tk = getTokenFromWord(acc);
     initToken(*tk);
+#if SAVE_TOKEN_STRING
+    if (tk->type != TokenType::Identifier) {
+        tk->_str = std::move(acc);
+    }
+#endif
     tk->span.end = tk->span.start + len-1; // tellg() will return a garbage number due to EOF, set end manually
     return tk;
-}
-
-std::vector<std::unique_ptr<Tokens::BaseTk>> Lexer::scan() {
-    if (!file_)
-        throwError("No opened file.");
-
-    std::vector<std::unique_ptr<Tokens::BaseTk>> tokens;
-    bool eof = false;
-
-    do {
-        auto tk = nextToken(eof);
-        std::cout << "New token: " << *tk << "\n\n";
-        tokens.emplace_back(std::move(tk));
-    } while (!eof);
-
-    return tokens;
 }
 
 std::unique_ptr<Tokens::BaseTk> Lexer::getTokenFromWord(std::string& word) {
     if (word.empty())
         throw std::runtime_error("cannot lex an empty word");
-    std::cout << "Lexing word: " << word << "\n";
+    if (canLog(1)) std::cout << "Lexing word: " << word << "\n";
 
     // If found in keyword map, it's a Keyword
     auto kw = KEYWORDS.find(word);
@@ -220,9 +268,9 @@ void Lexer::initToken(Tokens::BaseTk& tk) {
 
 TokenType Lexer::getDelimiterType(char c) {
     switch (c) {
-        case ' ': return TokenType::Space;
-        case '\t': return TokenType::Space;
-        case ';': return TokenType::Space;
+        case ' ': return TokenType::SPACE;
+        case '\t': return TokenType::INDENT;
+        case ';': return TokenType::SEMICOLON;
         case ':': {
             int byte;
             if ((byte = file_->get()) != EOF) {
@@ -241,8 +289,39 @@ TokenType Lexer::getDelimiterType(char c) {
             }
             return TokenType::EQUAL;
         }
-        case '/': return TokenType::DIVIDE;
-        case '*': return TokenType::TIMES;
+        case '/': {
+            int byte;
+            if ((byte = file_->get()) != EOF) {
+                if ('*' == static_cast<unsigned char>(byte)) {
+                    comment_.isStarted = true;
+                    comment_.isMultiline = true;
+                    if (canLog(2)) std::cout << "Opening a comment\n";
+                    return TokenType::COMMENT_OPEN;
+                }
+                else if ('/' == static_cast<unsigned char>(byte)) {
+                    comment_.isStarted = true;
+                    comment_.isMultiline = false;
+                    if (canLog(2)) std::cout << "Oneline comment\n";
+                    return TokenType::COMMENT_ONELINE;
+                }
+                file_->seekg(-1, std::ios::cur);
+            }
+            return TokenType::DIVIDE;
+        }
+        case '*': {
+            int byte;
+            if ((byte = file_->get()) != EOF) {
+                if ('/' == static_cast<unsigned char>(byte)) {
+                    comment_.isStarted = false;
+                    if (canLog(2)) std::cout << "Closing a comment\n";
+                    
+                    return TokenType::COMMENT_CLOSE;
+                }
+                file_->seekg(-1, std::ios::cur);
+            }
+            return TokenType::TIMES;
+        }
+        case '%': return TokenType::MODULO;
         case '<': return TokenType::LESS_THAN;
         case '>': return TokenType::MORE_THAN;
         case '.': return TokenType::DOT;
@@ -259,4 +338,22 @@ void Lexer::throwError(std::string reason) {
     std::ostringstream ss;
     ss << "[Lexer (line " << lineNum_ << ")]: " << std::move(reason);
     throw std::runtime_error(ss.str());
+}
+
+char Lexer::processEndline(unsigned char c) {
+    if (c == 10 || c == 13) { // Line Feed + Carriage Return
+        // If it's Windows notation (CRLF), skip over both characters
+        if (c == 13) {
+            int byte;
+            if ((byte = file_->get()) != EOF) {
+                char c2;
+                if ((c2 = static_cast<unsigned int>(byte)) != 13) {
+                    throwError("Encountered Carriage Return without Line Feed");
+                }
+                return 2;
+            }
+        }
+        return 1;
+    }
+    return 0;
 }

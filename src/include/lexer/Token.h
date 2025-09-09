@@ -3,6 +3,8 @@
 #include "lexer/TokenType.h"
 #include <string>
 
+#define SAVE_TOKEN_STRING 0
+
 namespace Tokens {
     struct Span {
         unsigned long line;
@@ -17,6 +19,9 @@ namespace Tokens {
 
         Span span;
         const TokenType type;
+#if SAVE_TOKEN_STRING
+        std::string _str;
+#endif
     };
 
     struct IdentifierTk : BaseTk {
@@ -30,23 +35,23 @@ namespace Tokens {
 
     struct IntTk : public BaseTk {
         IntTk():
-            BaseTk(TokenType::Int) {}
+            BaseTk(TokenType::IntLiteral) {}
         IntTk(long value):
-            BaseTk(TokenType::Int), value(value) {}
+            BaseTk(TokenType::IntLiteral), value(value) {}
         void print(std::ostream& os) const override;
 
-        TokenType type{TokenType::Int};
+        TokenType type{TokenType::IntLiteral};
         long value{0};
     };
 
     struct RealTk : public BaseTk {
         RealTk():
-            BaseTk(TokenType::Real) {}
+            BaseTk(TokenType::RealLiteral) {}
         RealTk(double value):
-            BaseTk(TokenType::Real), value(value) {}
+            BaseTk(TokenType::RealLiteral), value(value) {}
         void print(std::ostream& os) const override;
 
-        TokenType type{TokenType::Real};
+        TokenType type{TokenType::RealLiteral};
         double value{0};
     };
 }
