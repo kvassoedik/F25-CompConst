@@ -79,8 +79,10 @@ std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(bool& ret_eof) {
             if (comment_.isMultiline) {
                 TokenType type = getDelimiterType(c);
                 if (type != TokenType::COMMENT_CLOSE) {
+#if SAVE_TOKEN_STRING
                     // Accumulate comment
                     acc += c;
+#endif
                     continue;
                 }
 
@@ -88,8 +90,10 @@ std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(bool& ret_eof) {
             } else {
                 char endlineNum = processEndline(c);
                 if (!endlineNum) {
+#if SAVE_TOKEN_STRING
                     // Accumulate comment
                     acc += c;
+#endif
                     continue;
                 }
                 // Endline has been hit, seek back to process the endline again after
@@ -163,9 +167,7 @@ std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(bool& ret_eof) {
             auto tk = std::make_unique<Tokens::BaseTk>(type);
             initToken(*tk);
 #if SAVE_TOKEN_STRING
-            if (type != TokenType::ENDLINE) {
-                tk->_str = c;
-            }
+            tk->_str = c;
 #endif
             return tk;
         }
