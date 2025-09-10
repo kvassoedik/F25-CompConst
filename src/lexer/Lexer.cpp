@@ -7,6 +7,8 @@
 #include <cmath>
 #include <sstream>
 
+#define SAVE_EXCESSIVE_TOKENS 1
+
 static std::unordered_map<std::string, TokenType> KEYWORDS
 {
     {"true", TokenType::True},
@@ -39,9 +41,11 @@ bool Lexer::openFile(char* fileName) {
 
     lineNum_ = 1;
     currTkStart_ = 0;
+    posInLine_ = -1;
     comment_.isStarted = false;
     comment_.isMultiline = false;
     file_.swap(file);
+    fileName_.append(fileName);
     return true;
 }
 
@@ -50,50 +54,90 @@ std::vector<std::unique_ptr<Tokens::BaseTk>> Lexer::scan() {
         throwError("No opened file.");
 
     std::vector<std::unique_ptr<Tokens::BaseTk>> tokens;
+    acc_.reserve(8 * 1024);
     bool eof = false;
 
     do {
         auto tk = nextToken(eof);
         if (canLog(1)) std::cout << "* New token: " << *tk << "\n";
 
+        #if SAVE_EXCESSIVE_TOKENS
+        tokens.emplace_back(std::move(tk));
+        #else
+        // Don't include spaces and comments
         if (static_cast<unsigned int>(tk->type) > 8 ||
             (static_cast<unsigned int>(tk->type) > 2 && static_cast<unsigned int>(tk->type) < 5))
         {
-            // Don't include spaces and comments
             tokens.emplace_back(std::move(tk));
         }
+        #endif
     } while (!eof);
 
     return tokens;
 }
 
 std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(bool& ret_eof) {
-    std::string acc;
     int byte;
 
     while ((byte = (file_->get())) != EOF) {
         unsigned char c = byte;
+        posInLine_++;
+
+        if (canLog(2)) {
+            switch (c)
+            {
+            case '\n': {
+                std::cout << "Got character: \\n\n";
+                break;
+            }
+            case '\t': {
+                std::cout << "Got character: \\t\n";
+                break;
+            }
+            case '\r':
+                std::cout << "Got character: \r\n";
+            default: std::cout << "Got character: " << c << "\n";
+            }
+        }
 
         // Check if currently inside a comment
         if (comment_.isStarted) {
             if (comment_.isMultiline) {
-                TokenType type = getDelimiterType(c);
-                if (type != TokenType::COMMENT_CLOSE) {
-#if SAVE_TOKEN_STRING
+                if (c != '*') {
                     // Accumulate comment
-                    acc += c;
-#endif
+                    accLen_++;
+
+                    #if SAVE_TOKEN_STRING
+                    acc_ += c;
+                    #endif
                     continue;
                 }
 
-                file_->seekg(-2, std::ios::cur); // little hardcode for the length of "*/" token
+                if ((byte = file_->get()) == EOF) break;
+                if ('/' != static_cast<unsigned char>(byte)) {
+                    // Accumulate comment
+                    accLen_ += 2;
+
+                    #if SAVE_TOKEN_STRING
+                    acc_ += c;
+                    acc_ += static_cast<unsigned char>(byte);
+                    #endif
+                    continue;
+                }
+
+                comment_.isStarted = false;
+                if (canLog(2)) std::cout << "Closing a comment\n";
+
+                file_->seekg(-2, std::ios::cur); // little hardcode for "*/" token's length
             } else {
                 char endlineNum = processEndline(c);
                 if (!endlineNum) {
-#if SAVE_TOKEN_STRING
                     // Accumulate comment
-                    acc += c;
-#endif
+                    accLen_++;
+                    
+                    #if SAVE_TOKEN_STRING
+                    acc_ += c;
+                    #endif
                     continue;
                 }
                 // Endline has been hit, seek back to process the endline again after
@@ -102,29 +146,33 @@ std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(bool& ret_eof) {
             }
             
             auto tk = std::make_unique<Tokens::BaseTk>(TokenType::COMMENT_BODY);
-#if SAVE_TOKEN_STRING
-            tk->_str = std::move(acc);
-#endif
+            #if SAVE_TOKEN_STRING
+            tk->_str = std::move(acc_);
+            accLen_ = 0;
+            #endif
             initToken(*tk);
             return tk;
         }
 
         if (isLetter(c) || isDigit(c)) {
-            acc += c;
+            acc_ += c;
+            accLen_++;
         } else {
             if (c == '.') {
-                if (acc.size() > 0) {
-                    if (isDigit(acc[0])) {
+                if (acc_.size() > 0) {
+                    if (isDigit(acc_[0])) {
                         // This is a real literal
-                        acc += c;
+                        acc_ += c;
+                        accLen_++;
                         continue;
                     }
                 } else {
                     int byte;
                     if ((byte = file_->get()) != EOF && isDigit(static_cast<unsigned char>(byte))) {
                         // This is a real literal. Add both this dot and the following char and move on
-                        acc += c;
-                        acc += static_cast<unsigned char>(byte);
+                        acc_ += c;
+                        acc_ += static_cast<unsigned char>(byte);
+                        accLen_ += 2;
                         continue;
                     } else {
                         file_->seekg(-1, std::ios::cur); // It's not a real, go back and let the dot be handled
@@ -132,18 +180,22 @@ std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(bool& ret_eof) {
                 }
             }
 
-            if (acc.size() > 0) {
+            if (accLen_ > 0) {
                 // Process the previously stored word first, this delimiter will be parsed later
                 file_->seekg(-1, std::ios::cur);
 
-                auto tk = getTokenFromWord(acc);
+                auto tk = getTokenFromWord(acc_);
                 initToken(*tk);
-#if SAVE_TOKEN_STRING
+
+                #if SAVE_TOKEN_STRING
                 if (tk->type != TokenType::Identifier && tk->type != TokenType::IntLiteral
                     && tk->type != TokenType::RealLiteral && tk->type != TokenType::BoolLiteral) {
-                    tk->_str = std::move(acc);
+                    tk->_str = std::move(acc_);
                 }
-#endif
+                #endif
+
+                acc_.clear();
+                accLen_ = 0;
                 return tk;
             }
 
@@ -151,9 +203,10 @@ std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(bool& ret_eof) {
                 auto tk = std::make_unique<Tokens::BaseTk>(TokenType::ENDLINE);
                 initToken(*tk);
                 lineNum_++;
-#if SAVE_TOKEN_STRING
+                posInLine_ = -1;
+                #if SAVE_TOKEN_STRING
                 tk->_str = "\\n";
-#endif
+                #endif
                 return tk;
             }
 
@@ -166,9 +219,44 @@ std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(bool& ret_eof) {
 
             auto tk = std::make_unique<Tokens::BaseTk>(type);
             initToken(*tk);
-#if SAVE_TOKEN_STRING
-            tk->_str = c;
-#endif
+            #if SAVE_TOKEN_STRING
+            // Band-aid for displaying delimiter tokens with length over 1 character
+            switch (tk->type) {
+            case TokenType::INDENT: {
+                tk->_str = "\\t";
+                break;
+            }
+            case TokenType::COMMENT_ONELINE: {
+                tk->_str = "//";
+                break;
+            }
+            case TokenType::COMMENT_OPEN: {
+                tk->_str = "/*";
+                break;
+            }
+            case TokenType::COMMENT_CLOSE: {
+                tk->_str = "*/";
+                break;
+            }
+            case TokenType::ASSIGNMENT: {
+                tk->_str = ":=";
+                break;
+            }
+            case TokenType::UNEQUAL: {
+                tk->_str = "/=";
+                break;
+            }
+            case TokenType::MORE_OR_EQUAL: {
+                tk->_str = ">=";
+                break;
+            }
+            case TokenType::LESS_OR_EQUAL: {
+                tk->_str = "<=";
+                break;
+            }
+            default: tk->_str = c;
+            }
+            #endif
             return tk;
         }
     }
@@ -176,19 +264,31 @@ std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(bool& ret_eof) {
     ret_eof = true;
     if (canLog(1)) std::cout << "==> REACHED EOF <==\n";
 
-    size_t len = acc.size();
-    if (len == 0)
+    if (accLen_ == 0)
         return std::make_unique<Tokens::BaseTk>(TokenType::SPACE);
     
-    auto tk = getTokenFromWord(acc);
-    initToken(*tk);
-#if SAVE_TOKEN_STRING
-    if (tk->type != TokenType::Identifier) {
-        tk->_str = std::move(acc);
+    if (comment_.isStarted) {
+        auto tk = std::make_unique<Tokens::BaseTk>(TokenType::COMMENT_BODY);
+        #if SAVE_TOKEN_STRING
+        tk->_str = std::move(acc_);
+        accLen_ = 0;
+        #endif
+        initToken(*tk);
+        return tk;
+    } else {
+        auto tk = getTokenFromWord(acc_);
+        initToken(*tk);
+
+        #if SAVE_TOKEN_STRING
+        if (tk->type != TokenType::Identifier) {
+            tk->_str = std::move(acc_);
+            accLen_ = 0;
+        }
+        #endif
+
+        tk->span.end = tk->span.start + accLen_-1; // tellg() will return a garbage number due to EOF, set end manually
+        return tk;
     }
-#endif
-    tk->span.end = tk->span.start + len-1; // tellg() will return a garbage number due to EOF, set end manually
-    return tk;
 }
 
 std::unique_ptr<Tokens::BaseTk> Lexer::getTokenFromWord(std::string& word) {
@@ -299,12 +399,13 @@ TokenType Lexer::getDelimiterType(char c) {
                     comment_.isMultiline = true;
                     if (canLog(2)) std::cout << "Opening a comment\n";
                     return TokenType::COMMENT_OPEN;
-                }
-                else if ('/' == static_cast<unsigned char>(byte)) {
+                } else if ('/' == static_cast<unsigned char>(byte)) {
                     comment_.isStarted = true;
                     comment_.isMultiline = false;
                     if (canLog(2)) std::cout << "Oneline comment\n";
                     return TokenType::COMMENT_ONELINE;
+                } else if ('=' == static_cast<unsigned char>(byte)) {
+                    return TokenType::UNEQUAL;
                 }
                 file_->seekg(-1, std::ios::cur);
             }
@@ -313,19 +414,28 @@ TokenType Lexer::getDelimiterType(char c) {
         case '*': {
             int byte;
             if ((byte = file_->get()) != EOF) {
-                if ('/' == static_cast<unsigned char>(byte)) {
-                    comment_.isStarted = false;
-                    if (canLog(2)) std::cout << "Closing a comment\n";
-                    
-                    return TokenType::COMMENT_CLOSE;
-                }
+                if ('/' == static_cast<unsigned char>(byte)) return TokenType::COMMENT_CLOSE;
                 file_->seekg(-1, std::ios::cur);
             }
             return TokenType::TIMES;
         }
         case '%': return TokenType::MODULO;
-        case '<': return TokenType::LESS_THAN;
-        case '>': return TokenType::MORE_THAN;
+        case '<': {
+            int byte;
+            if ((byte = file_->get()) != EOF) {
+                if ('=' == static_cast<unsigned char>(byte)) return TokenType::LESS_OR_EQUAL;
+                file_->seekg(-1, std::ios::cur);
+            }
+            return TokenType::LESS_THAN;
+        }
+        case '>': {
+            int byte;
+            if ((byte = file_->get()) != EOF) {
+                if ('=' == static_cast<unsigned char>(byte)) return TokenType::MORE_OR_EQUAL;
+                file_->seekg(-1, std::ios::cur);
+            }
+            return TokenType::MORE_THAN;
+        }
         case '.': return TokenType::DOT;
         case ',': return TokenType::COMMA;
         case '(': return TokenType::BRACKET_OPEN;
@@ -338,7 +448,7 @@ TokenType Lexer::getDelimiterType(char c) {
 
 void Lexer::throwError(std::string reason) {
     std::ostringstream ss;
-    ss << "[Lexer (line " << lineNum_ << ")]: " << std::move(reason);
+    ss << fileName_ << ":" << getLine() << ":" << getCol() << ": " << std::move(reason);
     throw std::runtime_error(ss.str());
 }
 

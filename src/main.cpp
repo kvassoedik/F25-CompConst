@@ -49,8 +49,7 @@ int main(int argc, char **argv) {
     try {
         tokens = lexer.scan();
     } catch(std::runtime_error e) {
-        std::cerr << "------ ERROR compiling file: " << fileName << "\n"
-            << "Lexer failed: " << e.what() << "\n";
+        std::cerr << "------ ERROR compiling file (lx): " << fileName << "\n" << e.what() << "\n";
         return 3;
     }
 

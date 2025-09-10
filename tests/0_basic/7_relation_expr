@@ -3,6 +3,7 @@ var y is 20
 
 routine main() is
     print x = y // false
+    print x /= y // true
     print x > y // false 
     print x < y // true
     print y > x // true

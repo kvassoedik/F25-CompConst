@@ -17,6 +17,9 @@ public:
     bool openFile(char* fileName);
     std::vector<std::unique_ptr<Tokens::BaseTk>> scan();
 
+    [[nodiscard]] inline unsigned long getLine() const noexcept { return lineNum_; }
+    [[nodiscard]] inline unsigned long getCol() const noexcept { return posInLine_; }
+
     static bool isDigit(unsigned char c) { return (c > 47 && c < 58);}
     static bool isLetter(unsigned char c) { return ((c > 64 && c < 91) || (c > 96 && c < 123) || c == 95);}
 
@@ -32,8 +35,13 @@ private:
 private:
     std::vector<std::unique_ptr<Tokens::BaseTk>> tokens_;
     std::unique_ptr<std::ifstream> file_{nullptr};
+    std::string fileName_;
+    std::string acc_;
+    size_t accLen_;
     unsigned long lineNum_, currTkStart_;
+    long posInLine_;
     int logVerbosity_;
+
     struct {
         bool isStarted: 1;
         bool isMultiline: 1;
