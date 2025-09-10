@@ -31,7 +31,8 @@ enum class TokenType: unsigned int {
     COLON = 25,
     DOT = 26,
     COMMA = 27,
-    ROUTINE_ARROW = 28,
+    DOUBLE_DOT = 28,
+    ROUTINE_ARROW = 29,
 
     // Keywords
     True,

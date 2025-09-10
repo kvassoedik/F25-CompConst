@@ -5,6 +5,7 @@
 #pragma once
 
 #include "lexer/Token.h"
+#include "utils/Logger.h"
 #include <fstream>
 #include <vector>
 #include <memory>
@@ -16,9 +17,6 @@ public:
 
     bool openFile(char* fileName);
     std::vector<std::unique_ptr<Tokens::BaseTk>> scan();
-
-    [[nodiscard]] inline unsigned long getLine() const noexcept { return lineNum_; }
-    [[nodiscard]] inline unsigned long getCol() const noexcept { return posInLine_; }
 
     static bool isDigit(unsigned char c) { return (c > 47 && c < 58);}
     static bool isLetter(unsigned char c) { return ((c > 64 && c < 91) || (c > 96 && c < 123) || c == 95);}
@@ -33,13 +31,13 @@ private:
     char processEndline(unsigned char c);
     bool canLog(int verbosityLevel) const noexcept { return verbosityLevel <= logVerbosity_; }
 private:
+    Logger logger_;
     std::vector<std::unique_ptr<Tokens::BaseTk>> tokens_;
     std::unique_ptr<std::ifstream> file_{nullptr};
     std::string fileName_;
     std::string acc_;
     size_t accLen_;
-    unsigned long lineNum_, currTkStart_;
-    long posInLine_;
+    unsigned long pos_, posInLine_, lineNum_, lineStartPos_, currTkStart_;
     int logVerbosity_;
 
     struct {
