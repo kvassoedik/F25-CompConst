@@ -8,9 +8,9 @@
 #include <cmath>
 #include <sstream>
 
-#define SAVE_EXCESSIVE_TOKENS 0
+#define SAVE_EXCESSIVE_TOKENS 1
 
-static std::unordered_map<std::string, TokenType> KEYWORDS
+static std::unordered_map<std::string_view, TokenType> KEYWORDS
 {
     {"true", TokenType::True},
     {"false", TokenType::False},
@@ -22,6 +22,7 @@ static std::unordered_map<std::string, TokenType> KEYWORDS
     {"else", TokenType::Else},
     {"while", TokenType::While},
     {"for", TokenType::For},
+    {"in", TokenType::In},
     {"loop", TokenType::Loop},
     {"reverse", TokenType::Reverse},
     {"and", TokenType::And},
@@ -40,12 +41,10 @@ bool Lexer::openFile(char* fileName) {
     file->open(fileName, std::ios::in);
     if (!file->is_open()) return false;
 
-    pos_ = -1;
-    posInLine_ = -1;
+    pos_ = 0;
     lineNum_ = 1;
     currTkStart_ = 0;
     lineStartPos_ = 0;
-    accLen_ = 0;
     comment_.isStarted = false;
     comment_.isMultiline = false;
     file_.swap(file);
@@ -57,8 +56,10 @@ std::vector<std::unique_ptr<Tokens::BaseTk>> Lexer::scan() {
     if (!file_)
         throwError("No opened file.");
 
+    buf_.assign((std::istreambuf_iterator<char>(*file_)),
+            std::istreambuf_iterator<char>());
+
     std::vector<std::unique_ptr<Tokens::BaseTk>> tokens;
-    acc_.reserve(8 * 1024);
     bool eof = false;
 
     do {
@@ -81,13 +82,8 @@ std::vector<std::unique_ptr<Tokens::BaseTk>> Lexer::scan() {
 }
 
 std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(bool& ret_eof) {
-    int byte;
-
-    while ((byte = (file_->get())) != EOF) {
-        unsigned char c = byte;
-        pos_++;
-        posInLine_++;
-
+    unsigned char c;
+    while (get(c)) {
         if (canLog(2)) {
             switch (c)
             {
@@ -109,221 +105,131 @@ std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(bool& ret_eof) {
         if (comment_.isStarted) {
             if (comment_.isMultiline) {
                 if (c != '*') {
-                    // Accumulate comment
-                    #if SAVE_TOKEN_STRING
-                    accLen_++;
-                    acc_ += c;
-                    #endif
+                    pos_++;
                     continue;
                 }
 
-                if ((byte = file_->get()) == EOF) break;
-                if ('/' != static_cast<unsigned char>(byte)) {
-                    // Accumulate comment
-                    pos_++; posInLine_++;
-
-                    #if SAVE_TOKEN_STRING
-                    accLen_ += 2;
-                    acc_ += c;
-                    acc_ += static_cast<unsigned char>(byte);
-                    #endif
+                unsigned char c2;
+                if (!lookAhead(c2)) break; // EOF
+                if ('/' != c2) {
+                    pos_++;
                     continue;
                 }
 
-                comment_.isStarted = false;
                 if (canLog(2)) std::cout << "Closing a comment\n";
-
-                file_->seekg(-2, std::ios::cur); // little hardcode for "*/" token's length
-                pos_ --;
-                posInLine_--;
             } else {
-                char endlineNum = processEndline(c);
+                char endlineNum = checkEndline(c);
                 if (!endlineNum) {
-                    // Accumulate comment
-                    #if SAVE_TOKEN_STRING
-                    accLen_++;
-                    acc_ += c;
-                    #endif
+                    pos_++;
                     continue;
                 }
-                // Endline has been hit, seek back to process the endline again after
-                file_->seekg(-endlineNum, std::ios::cur);
-                pos_ --;
-                posInLine_--;
-                comment_.isStarted = false;
             }
-            
+            comment_.isStarted = false;
+
+
             auto tk = std::make_unique<Tokens::BaseTk>(TokenType::COMMENT_BODY);
-            #if SAVE_TOKEN_STRING
-            tk->_str = std::move(acc_);
-            accLen_ = 0;
-            #endif
             initToken(*tk);
             return tk;
         }
 
+        // Accumulate word
         if (isLetter(c) || isDigit(c)) {
-            acc_ += c;
-            accLen_++;
-        } else {
-            if (c == '.') {
-                bool isDoubleDot = false;
-                if ((byte = file_->get()) != EOF) {
-                    if ('.' == static_cast<unsigned char>(byte)) {
-                        isDoubleDot = true;
-                        if (accLen_ == 0) {
-                            // If nothing is accumulated, it's a DOUBLE_DOT token
-                            pos_++; posInLine_++;
+            pos_++;
+            continue;
+        }
 
-                            auto tk = std::make_unique<Tokens::BaseTk>(TokenType::DOUBLE_DOT);
-                            #if SAVE_TOKEN_STRING
-                            tk->_str = "..";
-                            #endif
-                            initToken(*tk);
-                            return tk;
-                        }
-                    }
-                    // Otherwise, step back and process the previous word
+        // A dot?
+        if (c == '.') {
+            bool isDoubleDot = false;
+            unsigned char c2;
+
+            if (!lookAhead(c2)) break;
+            if (c2 == '.') {
+                isDoubleDot = true;
+                if (currTkLen() == 0) {
+                    // If nothing is accumulated, it's a DOUBLE_DOT token
+                    pos_ += 2; // Step to the 2nd dot and past it
+                    if (canLog(2)) std::cout << "Skip character: " << c2 << "\n";
+
+                    auto tk = std::make_unique<Tokens::BaseTk>(TokenType::DOUBLE_DOT);
+                    initToken(*tk);
+                    return tk;
                 }
+            }
+            // Otherwise, step back and process the previous word
 
-                if (accLen_ > 0 && !isDoubleDot) {
-                    if (isDigit(acc_[0])) {
+            if (!isDoubleDot) {
+                if (currTkLen() > 0) {
+                    if (isDigit(buf_[currTkStart_]) || buf_[currTkStart_] == '.') {
                         // This is a real literal
-                        acc_ += c;
-                        accLen_++;
-
-                        file_->seekg(-1, std::ios::cur);
+                        // If the 1st char is also a dot, it's an ill form, but let it be processed by the getTokenFromWord()
+                        pos_++;
                         continue;
                     }
-                } else {
-                    // Reuse the just-read byte
-                    if (byte != EOF && isDigit(static_cast<unsigned char>(byte))) {
-                        // This is a real literal. Add both this dot and the following char and move on
-                        acc_ += c;
-                        acc_ += static_cast<unsigned char>(byte);
-                        accLen_ += 2;
-                        pos_++; posInLine_++;
-                        continue;
-                    }
+                } else if (isDigit(c2)) {
+                    // This is a real literal
+                    pos_ += 2;
+                    if (canLog(2)) std::cout << "Skip character: " << c2 << "\n";
+                    continue;
                 }
-                if (byte != EOF)
-                    file_->seekg(-1, std::ios::cur);
             }
+        }
 
-            if (accLen_ > 0) {
-                // Process the previously stored word first, this delimiter will be parsed later
-                file_->seekg(-1, std::ios::cur);
-                pos_--;
-                posInLine_--;
-
-                auto tk = getTokenFromWord(acc_);
-                initToken(*tk);
-
-                #if SAVE_TOKEN_STRING
-                if (tk->type != TokenType::Identifier && tk->type != TokenType::IntLiteral
-                    && tk->type != TokenType::RealLiteral && tk->type != TokenType::BoolLiteral) {
-                    tk->_str = std::move(acc_);
-                }
-                #endif
-
-                acc_.clear();
-                accLen_ = 0;
-                return tk;
-            }
-
-            if (processEndline(c)) {
-                auto tk = std::make_unique<Tokens::BaseTk>(TokenType::ENDLINE);
-                initToken(*tk);
-                lineNum_++;
-                lineStartPos_ = pos_+1;
-                posInLine_ = -1;
-                #if SAVE_TOKEN_STRING
-                tk->_str = "\\n";
-                #endif
-                return tk;
-            }
-
-            TokenType type = getDelimiterType(c);
-            if (type == TokenType::INVALID)
-                throwError("Unrecognized symbol: "
-                    + std::string(1, c)
-                    + " (ASCII: " + std::to_string(static_cast<int>(c)) + ")"
-                );
-
-            auto tk = std::make_unique<Tokens::BaseTk>(type);
+        // Flush the accumulated word
+        if (currTkLen() > 0) {
+            // Process the previously stored word first, this delimiter will be parsed later
+            auto tk = getTokenFromWord();
             initToken(*tk);
-            #if SAVE_TOKEN_STRING
-            // Band-aid for displaying delimiter tokens with length over 1 character
-            switch (tk->type) {
-            case TokenType::INDENT: {
-                tk->_str = "\\t";
-                break;
-            }
-            case TokenType::COMMENT_ONELINE: {
-                tk->_str = "//";
-                break;
-            }
-            case TokenType::COMMENT_OPEN: {
-                tk->_str = "/*";
-                break;
-            }
-            case TokenType::COMMENT_CLOSE: {
-                tk->_str = "*/";
-                break;
-            }
-            case TokenType::ASSIGNMENT: {
-                tk->_str = ":=";
-                break;
-            }
-            case TokenType::UNEQUAL: {
-                tk->_str = "/=";
-                break;
-            }
-            case TokenType::MORE_OR_EQUAL: {
-                tk->_str = ">=";
-                break;
-            }
-            case TokenType::LESS_OR_EQUAL: {
-                tk->_str = "<=";
-                break;
-            }
-            default: tk->_str = c;
-            }
-            #endif
             return tk;
         }
+
+        // An endline?
+        if (checkEndline(c, true)) {
+            pos_++;
+            auto tk = std::make_unique<Tokens::BaseTk>(TokenType::ENDLINE);
+            initToken(*tk);
+            lineNum_++;
+            lineStartPos_ = pos_;
+            return tk;
+        }
+
+        TokenType type = getDelimiterType(c);
+        if (type == TokenType::INVALID) {
+            if (pos_ + 1 <= buf_.size()) pos_++;
+            throwError("Unrecognized symbol: "
+                + std::string(1, c)
+                + " (ASCII " + std::to_string(static_cast<int>(c)) + ")"
+            );
+        }
+
+        pos_++;
+        auto tk = std::make_unique<Tokens::BaseTk>(type);
+        initToken(*tk);
+        return tk;
     }
 
     ret_eof = true;
     if (canLog(1)) std::cout << "==> REACHED EOF <==\n";
 
-    if (accLen_ == 0)
-        return std::make_unique<Tokens::BaseTk>(TokenType::SPACE);
+    if (currTkLen() == 0) {
+        auto tk = std::make_unique<Tokens::BaseTk>(TokenType::SPACE);
+        initToken(*tk);
+        return tk;
+    }
     
     if (comment_.isStarted) {
         auto tk = std::make_unique<Tokens::BaseTk>(TokenType::COMMENT_BODY);
-        #if SAVE_TOKEN_STRING
-        tk->_str = std::move(acc_);
-        accLen_ = 0;
-        #endif
         initToken(*tk);
         return tk;
     } else {
-        auto tk = getTokenFromWord(acc_);
+        auto tk = getTokenFromWord();
         initToken(*tk);
-
-        #if SAVE_TOKEN_STRING
-        if (tk->type != TokenType::Identifier) {
-            tk->_str = std::move(acc_);
-            accLen_ = 0;
-        }
-        #endif
-        
         return tk;
     }
 }
 
-std::unique_ptr<Tokens::BaseTk> Lexer::getTokenFromWord(std::string& word) {
+std::unique_ptr<Tokens::BaseTk> Lexer::getTokenFromWord() {
+    std::string_view word(buf_.c_str() + currTkStart_, pos_ - currTkStart_);
     if (word.empty())
         throw std::runtime_error("cannot lex an empty word");
     if (canLog(1)) std::cout << "Lexing word: " << word << "\n";
@@ -390,14 +296,28 @@ std::unique_ptr<Tokens::BaseTk> Lexer::getTokenFromWord(std::string& word) {
     }
 
     // Otherwise, its an identifier
-    return std::make_unique<Tokens::IdentifierTk>(std::move(word));
+    return std::make_unique<Tokens::IdentifierTk>(std::string(word.data(), word.size()));
 }
 
 void Lexer::initToken(Tokens::BaseTk& tk) {
     tk.span.line = lineNum_;
     tk.span.start = currTkStart_;
-    tk.span.end = pos_ + 1;
+    tk.span.end = pos_;
     currTkStart_ = tk.span.end;
+
+    #if SAVE_TOKEN_STRING
+    switch (tk.type) {
+    case TokenType::ENDLINE: {
+        tk._str = "\\n";
+        break;
+    }
+    case TokenType::INDENT: {
+        tk._str = "\\t";
+        break;
+    }
+    default: tk._str = std::move(buf_.substr(tk.span.start, tk.span.end - tk.span.start));
+    }
+    #endif
 }
 
 TokenType Lexer::getDelimiterType(char c) {
@@ -406,84 +326,73 @@ TokenType Lexer::getDelimiterType(char c) {
         case '\t': return TokenType::INDENT;
         case ';': return TokenType::SEMICOLON;
         case ':': {
-            int byte;
-            if ((byte = file_->get()) != EOF) {
-                if ('=' == static_cast<unsigned char>(byte)) {
-                    pos_++; posInLine_++;
+            unsigned char c2;
+            if (lookAhead(c2))
+                if ('=' == c2) {
+                    pos_++;
                     return TokenType::ASSIGNMENT;
                 }
-                file_->seekg(-1, std::ios::cur); // oh, you're not ":=", sorry for the trouble, going back :P
-            }
             return TokenType::COLON;
         }
         case '+': return TokenType::PLUS;
         case '-': return TokenType::MINUS;
         case '=': {
-            int byte;
-            if ((byte = file_->get()) != EOF) {
-                if ('>' == static_cast<unsigned char>(byte)) {
-                    pos_++; posInLine_++;
+            unsigned char c2;
+            if (lookAhead(c2))
+                if ('>' == c2) {
+                    pos_++;
                     return TokenType::ROUTINE_ARROW;
                 }
-                file_->seekg(-1, std::ios::cur);
-            }
             return TokenType::EQUAL;
         }
         case '/': {
-            int byte;
-            if ((byte = file_->get()) != EOF) {
-                if ('*' == static_cast<unsigned char>(byte)) {
+            unsigned char c2;
+            if (lookAhead(c2)) {
+                if ('*' == c2) {
                     comment_.isStarted = true;
                     comment_.isMultiline = true;
-                    pos_++; posInLine_++;
+                    pos_++;
                     if (canLog(2)) std::cout << "Opening a comment\n";
                     return TokenType::COMMENT_OPEN;
-                } else if ('/' == static_cast<unsigned char>(byte)) {
+                } else if ('/' == c2) {
                     comment_.isStarted = true;
                     comment_.isMultiline = false;
-                    pos_++; posInLine_++;
+                    pos_++;
                     if (canLog(2)) std::cout << "Oneline comment\n";
                     return TokenType::COMMENT_ONELINE;
-                } else if ('=' == static_cast<unsigned char>(byte)) {
-                    pos_++; posInLine_++;
+                } else if ('=' == c2) {
+                    pos_++;
                     return TokenType::UNEQUAL;
                 }
-                file_->seekg(-1, std::ios::cur);
             }
             return TokenType::DIVIDE;
         }
         case '*': {
-            int byte;
-            if ((byte = file_->get()) != EOF) {
-                if ('/' == static_cast<unsigned char>(byte)) {
-                    pos_++; posInLine_++;
+            unsigned char c2;
+            if (lookAhead(c2))
+                if ('/' == c2) {
+                    pos_++;
                     return TokenType::COMMENT_CLOSE;
                 }
-                file_->seekg(-1, std::ios::cur);
-            }
             return TokenType::TIMES;
         }
         case '%': return TokenType::MODULO;
         case '<': {
-            int byte;
-            if ((byte = file_->get()) != EOF) {
-                if ('=' == static_cast<unsigned char>(byte)) {
-                    pos_++; posInLine_++;
+            unsigned char c2;
+            if (lookAhead(c2))
+                if ('=' == c2) {
+                    pos_++;
                     return TokenType::LESS_OR_EQUAL;
                 }
-                file_->seekg(-1, std::ios::cur);
-            }
             return TokenType::LESS_THAN;
         }
         case '>': {
-            int byte;
-            if ((byte = file_->get()) != EOF) {
-                if ('=' == static_cast<unsigned char>(byte)) {
-                    pos_++; posInLine_++;
+            unsigned char c2;
+            if (lookAhead(c2))
+                if ('=' == c2) {
+                    pos_++;
                     return TokenType::MORE_OR_EQUAL;
                 }
-                file_->seekg(-1, std::ios::cur);
-            }
             return TokenType::MORE_THAN;
         }
         case '.': return TokenType::DOT;
@@ -501,7 +410,10 @@ void Lexer::throwError(std::string reason) {
 
     // Output the erroneous line
     char buf[56];
-    file_->seekg(((currTkStart_ < 16 || lineStartPos_ + 16 > currTkStart_) ? lineStartPos_: currTkStart_ - 16)); // 16 chars back, the rest is forward
+
+    // 16 chars back, the rest is forward
+    unsigned long displayStart = ((currTkStart_ < 16 || lineStartPos_ + 16 > currTkStart_) ? lineStartPos_: currTkStart_ - 16);
+    file_->seekg(displayStart); 
     file_->getline(buf, 56);
 
     bool lineTooLong = file_->fail();
@@ -513,25 +425,45 @@ void Lexer::throwError(std::string reason) {
         << ANSI_START ANSI_RED ANSI_AND ANSI_BOLD ANSI_APPLY "error" ANSI_RESET ": " << std::move(reason) << "\n"
         << logger_.numberedWall(lineNum_ + 1) << buf << (lineTooLong ? "..." : "") << "\n"
         << logger_.wall() << ANSI_START ANSI_RED ANSI_APPLY
-        << logger_.arrows(currTkStart_ - lineStartPos_, (pos_ - currTkStart_ >= 56) ? 56 : pos_ - currTkStart_ + 1) << ANSI_RESET;
+        << logger_.arrows(currTkStart_ - displayStart, (pos_ - currTkStart_ > 56) ? 56 : pos_ - currTkStart_) << ANSI_RESET;
     throw std::runtime_error(ss.str());
 }
 
-char Lexer::processEndline(unsigned char c) {
+char Lexer::checkEndline(unsigned char c, bool doMove) {
     if (c == 10 || c == 13) { // Line Feed + Carriage Return
         // If it's Windows notation (CRLF), skip over both characters
         if (c == 13) {
-            int byte;
-            if ((byte = file_->get()) != EOF) {
-                char c2;
-                if ((c2 = static_cast<unsigned int>(byte)) != 13) {
+            unsigned char c2;
+            if (lookAhead(c2)) {
+                if (c2 != 10) {
                     throwError("encountered Carriage Return without Line Feed");
                 }
-
+                if (doMove)
+                    pos_++;
                 return 2;
             }
         }
         return 1;
     }
     return 0;
+}
+
+bool Lexer::lookAhead(unsigned char &c) {
+    if (pos_ + 1 > buf_.size())
+        return false;
+    c = buf_[pos_ + 1];
+    return true;
+}
+
+bool Lexer::get(unsigned char &c) {
+    if (pos_ == buf_.size())
+        return false;
+    c = buf_[pos_];
+    return true;
+}
+
+void Lexer::move() {
+    if (pos_ == buf_.size())
+        return;
+    pos_++;
 }

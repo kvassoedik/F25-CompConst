@@ -53,8 +53,8 @@ int main(int argc, char **argv) {
         return 3;
     }
 
-    // std::cout << "======= TOKEN SEQUENCE =======" << tokens.size();
-    // for (auto& t: tokens) {
-    //     std::cout << *t << "\n";
-    // }
+    std::cout << "======= TOKEN SEQUENCE =======\n";
+    for (auto& t: tokens) {
+        std::cout << *t << "\n";
+    }
 }

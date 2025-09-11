@@ -23,21 +23,25 @@ public:
 
 private:
     std::unique_ptr<Tokens::BaseTk> nextToken(bool& ret_eof);
-    std::unique_ptr<Tokens::BaseTk> getTokenFromWord(std::string& word);
+    std::unique_ptr<Tokens::BaseTk> getTokenFromWord();
     TokenType getDelimiterType(char c);
     void initToken(Tokens::BaseTk& tk);
     void throwError(std::string reason);
     // Returns the number of characters in the endline processed, if any
-    char processEndline(unsigned char c);
+    char checkEndline(unsigned char c, bool doMove = false);
     bool canLog(int verbosityLevel) const noexcept { return verbosityLevel <= logVerbosity_; }
+
+    bool lookAhead(unsigned char& c);
+    bool get(unsigned char& c);
+    void move();
+    inline unsigned long currTkLen() const noexcept { return pos_ - currTkStart_; }
 private:
     Logger logger_;
     std::vector<std::unique_ptr<Tokens::BaseTk>> tokens_;
     std::unique_ptr<std::ifstream> file_{nullptr};
     std::string fileName_;
-    std::string acc_;
-    size_t accLen_;
-    unsigned long pos_, posInLine_, lineNum_, lineStartPos_, currTkStart_;
+    std::string buf_;
+    unsigned long pos_, lineNum_, lineStartPos_, currTkStart_;
     int logVerbosity_;
 
     struct {
