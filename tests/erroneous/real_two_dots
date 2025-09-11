@@ -1,0 +1,3 @@
+routine main() is
+    var x is 2.22.3
+end

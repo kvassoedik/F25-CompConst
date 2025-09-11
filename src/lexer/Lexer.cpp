@@ -8,7 +8,7 @@
 #include <cmath>
 #include <sstream>
 
-#define SAVE_EXCESSIVE_TOKENS 1
+#define SAVE_EXCESSIVE_TOKENS 0
 
 static std::unordered_map<std::string, TokenType> KEYWORDS
 {
@@ -45,6 +45,7 @@ bool Lexer::openFile(char* fileName) {
     lineNum_ = 1;
     currTkStart_ = 0;
     lineStartPos_ = 0;
+    accLen_ = 0;
     comment_.isStarted = false;
     comment_.isMultiline = false;
     file_.swap(file);
@@ -109,9 +110,8 @@ std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(bool& ret_eof) {
             if (comment_.isMultiline) {
                 if (c != '*') {
                     // Accumulate comment
-                    accLen_++;
-
                     #if SAVE_TOKEN_STRING
+                    accLen_++;
                     acc_ += c;
                     #endif
                     continue;
@@ -120,10 +120,10 @@ std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(bool& ret_eof) {
                 if ((byte = file_->get()) == EOF) break;
                 if ('/' != static_cast<unsigned char>(byte)) {
                     // Accumulate comment
-                    accLen_ += 2;
                     pos_++; posInLine_++;
 
                     #if SAVE_TOKEN_STRING
+                    accLen_ += 2;
                     acc_ += c;
                     acc_ += static_cast<unsigned char>(byte);
                     #endif
@@ -140,9 +140,8 @@ std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(bool& ret_eof) {
                 char endlineNum = processEndline(c);
                 if (!endlineNum) {
                     // Accumulate comment
-                    accLen_++;
-                    
                     #if SAVE_TOKEN_STRING
+                    accLen_++;
                     acc_ += c;
                     #endif
                     continue;

@@ -1,0 +1,93 @@
+read(3, "var x: integer is 2; var y1y:boo"..., 8191) = 305
+lseek(3, -302, SEEK_CUR)                = 3
+read(3, " x: integer is 2; var y1y:boolea"..., 8191) = 302
+lseek(3, -300, SEEK_CUR)                = 5
+read(3, ": integer is 2; var y1y:boolean "..., 8191) = 300
+lseek(3, -299, SEEK_CUR)                = 6
+read(3, " integer is 2; var y1y:boolean  "..., 8191) = 299
+lseek(3, -291, SEEK_CUR)                = 14
+read(3, " is 2; var y1y:boolean  is  true"..., 8191) = 291
+lseek(3, -288, SEEK_CUR)                = 17
+read(3, " 2; var y1y:boolean  is  true//c"..., 8191) = 288
+lseek(3, -286, SEEK_CUR)                = 19
+read(3, "; var y1y:boolean  is  true//com"..., 8191) = 286
+lseek(3, -281, SEEK_CUR)                = 24
+read(3, " y1y:boolean  is  true//comment\n"..., 8191) = 281
+lseek(3, -277, SEEK_CUR)                = 28
+read(3, ":boolean  is  true//comment\n var"..., 8191) = 277
+lseek(3, -276, SEEK_CUR)                = 29
+read(3, "boolean  is  true//comment\n var "..., 8191) = 276
+lseek(3, -269, SEEK_CUR)                = 36
+read(3, "  is  true//comment\n var my_vari"..., 8191) = 269
+lseek(3, -265, SEEK_CUR)                = 40
+read(3, "  true//comment\n var my_variable"..., 8191) = 265
+lseek(3, -259, SEEK_CUR)                = 46
+read(3, "//comment\n var my_variable is   "..., 8191) = 259
+lseek(3, -250, SEEK_CUR)                = 55
+read(3, "\n var my_variable is   5\n//     "..., 8191) = 250
+lseek(3, -245, SEEK_CUR)                = 60
+read(3, " my_variable is   5\n//          "..., 8191) = 245
+lseek(3, -233, SEEK_CUR)                = 72
+read(3, " is   5\n//              another "..., 8191) = 233
+lseek(3, -230, SEEK_CUR)                = 75
+read(3, "   5\n//              another com"..., 8191) = 230
+lseek(3, -226, SEEK_CUR)                = 79
+read(3, "\n//              another comment"..., 8191) = 226
+lseek(3, -194, SEEK_CUR)                = 111
+read(3, "\n//print x\n  var z: boolean is y"..., 8191) = 194
+lseek(3, -184, SEEK_CUR)                = 121
+read(3, "\n  var z: boolean is y1y;print/*"..., 8191) = 184
+lseek(3, -178, SEEK_CUR)                = 127
+read(3, " z: boolean is y1y;print/*I am a"..., 8191) = 178
+lseek(3, -176, SEEK_CUR)                = 129
+read(3, ": boolean is y1y;print/*I am a c"..., 8191) = 176
+lseek(3, -175, SEEK_CUR)                = 130
+read(3, " boolean is y1y;print/*I am a co"..., 8191) = 175
+lseek(3, -167, SEEK_CUR)                = 138
+read(3, " is y1y;print/*I am a comment!*/"..., 8191) = 167
+lseek(3, -164, SEEK_CUR)                = 141
+read(3, " y1y;print/*I am a comment!*/z;r"..., 8191) = 164
+lseek(3, -160, SEEK_CUR)                = 145
+read(3, ";print/*I am a comment!*/z;routi"..., 8191) = 160
+lseek(3, -154, SEEK_CUR)                = 151
+read(3, "/*I am a comment!*/z;routine mai"..., 8191) = 154
+lseek(3, -137, SEEK_CUR)                = 168
+read(3, "*/z;routine main() is\nprint z = "..., 8191) = 137
+lseek(3, -134, SEEK_CUR)                = 171
+read(3, ";routine main() is\nprint z = y1y"..., 8191) = 134
+lseek(3, -126, SEEK_CUR)                = 179
+read(3, " main() is\nprint z = y1y;print; "..., 8191) = 126
+lseek(3, -121, SEEK_CUR)                = 184
+read(3, "() is\nprint z = y1y;print; print"..., 8191) = 121
+lseek(3, -116, SEEK_CUR)                = 189
+read(3, "\nprint z = y1y;print; print z\n/*"..., 8191) = 116
+lseek(3, -110, SEEK_CUR)                = 195
+read(3, " z = y1y;print; print z\n/*print "..., 8191) = 110
+lseek(3, -108, SEEK_CUR)                = 197
+read(3, " = y1y;print; print z\n/*print z*"..., 8191) = 108
+lseek(3, -106, SEEK_CUR)                = 199
+read(3, " y1y;print; print z\n/*print z*//"..., 8191) = 106
+lseek(3, -102, SEEK_CUR)                = 203
+read(3, ";print; print z\n/*print z*//* ye"..., 8191) = 102
+lseek(3, -96, SEEK_CUR)                 = 209
+read(3, "; print z\n/*print z*//* yet anot"..., 8191) = 96
+lseek(3, -89, SEEK_CUR)                 = 216
+read(3, " z\n/*print z*//* yet another com"..., 8191) = 89
+lseek(3, -87, SEEK_CUR)                 = 218
+read(3, "\n/*print z*//* yet another comme"..., 8191) = 87
+lseek(3, -77, SEEK_CUR)                 = 228
+read(3, "*//* yet another comment  123 23"..., 8191) = 77
+lseek(3, -44, SEEK_CUR)                 = 261
+read(3, "*/end\n/*Almost nested //*comment"..., 8191) = 44
+lseek(3, -39, SEEK_CUR)                 = 266
+read(3, "\n/*Almost nested //*comment*/var"..., 8191) = 39
+lseek(3, -12, SEEK_CUR)                 = 293
+read(3, "*/var h is 1", 8191)           = 12
+lseek(3, -7, SEEK_CUR)                  = 298
+read(3, " h is 1", 8191)                = 7
+lseek(3, -5, SEEK_CUR)                  = 300
+read(3, " is 1", 8191)                  = 5
+lseek(3, -2, SEEK_CUR)                  = 303
+read(3, " 1", 8191)                     = 2
+read(3, "", 8191)                       = 0
+fstat(1, {st_mode=S_IFCHR|0620, st_rdev=makedev(0x88, 0x2), ...}) = 0

@@ -3,7 +3,7 @@
 #include "lexer/TokenType.h"
 #include <string>
 
-#define SAVE_TOKEN_STRING 1
+#define SAVE_TOKEN_STRING 0
 
 namespace Tokens {
     struct Span {
