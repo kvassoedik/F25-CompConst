@@ -52,6 +52,9 @@ int main(int argc, char **argv) {
         std::cerr << "------ ERROR compiling file (lx): " << fileName << "\n" << e.what() << "\n";
         return 3;
     }
+    if (lexer.releaseErrors()) {
+        return 4;
+    }
 
     std::cout << "======= TOKEN SEQUENCE =======\n";
     for (auto& t: tokens) {

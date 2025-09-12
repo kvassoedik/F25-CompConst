@@ -5,6 +5,7 @@
 #pragma once
 
 #include "lexer/Token.h"
+#include "lexer/LexerStatus.h"
 #include "utils/Logger.h"
 #include <fstream>
 #include <vector>
@@ -17,27 +18,35 @@ public:
 
     bool openFile(char* fileName);
     std::vector<std::unique_ptr<Tokens::BaseTk>> scan();
+    bool releaseErrors();
 
     static bool isDigit(unsigned char c) { return (c > 47 && c < 58);}
     static bool isLetter(unsigned char c) { return ((c > 64 && c < 91) || (c > 96 && c < 123) || c == 95);}
 
 private:
-    std::unique_ptr<Tokens::BaseTk> nextToken(bool& ret_eof);
-    std::unique_ptr<Tokens::BaseTk> getTokenFromWord();
-    TokenType getDelimiterType(char c);
-    void initToken(Tokens::BaseTk& tk);
-    void throwError(std::string reason);
-    // Returns the number of characters in the endline processed, if any
-    char checkEndline(unsigned char c, bool doMove = false);
-    bool canLog(int verbosityLevel) const noexcept { return verbosityLevel <= logVerbosity_; }
+    std::unique_ptr<Tokens::BaseTk> nextToken(LexerStatus& ret_st);
+    std::unique_ptr<Tokens::BaseTk> getTokenFromWord(LexerStatus& ret_st);
+    std::unique_ptr<Tokens::BaseTk> initToken(std::unique_ptr<Tokens::BaseTk> tk);
+    TokenType getDelimiterType(unsigned char c);
 
-    bool lookAhead(unsigned char& c);
-    bool get(unsigned char& c);
-    void move();
+    char checkEndline(unsigned char c, bool doMove = false); // Returns the number of characters in the endline processed, if any
+    bool lookAhead(unsigned char& c) const noexcept;
+    bool get(unsigned char& c) const noexcept;
+    inline void move(unsigned long step) noexcept;
     inline unsigned long currTkLen() const noexcept { return pos_ - currTkStart_; }
+
+    bool canLog(int verbosityLevel) const noexcept { return verbosityLevel <= logVerbosity_; }
+    void saveError(LexerStatus st, std::string reason);
 private:
+    struct LexerError {
+        std::string message;
+        Tokens::Span span;
+        unsigned long lineStart;
+    };
+
     Logger logger_;
     std::vector<std::unique_ptr<Tokens::BaseTk>> tokens_;
+    std::vector<LexerError> errors_;
     std::unique_ptr<std::ifstream> file_{nullptr};
     std::string fileName_;
     std::string buf_;
@@ -45,7 +54,8 @@ private:
     int logVerbosity_;
 
     struct {
-        bool isStarted: 1;
-        bool isMultiline: 1;
-    } comment_;
+        bool eof: 1;
+        bool commentStarted: 1;
+        bool commentMultiline: 1;
+    } bits_;
 };
