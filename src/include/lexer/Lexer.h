@@ -20,18 +20,18 @@ public:
     std::vector<std::unique_ptr<Tokens::BaseTk>> scan();
     bool releaseErrors();
 
-    static bool isDigit(unsigned char c) { return (c > 47 && c < 58);}
-    static bool isLetter(unsigned char c) { return ((c > 64 && c < 91) || (c > 96 && c < 123) || c == 95);}
+    static bool isDigit(char c) { return (c > 47 && c < 58);}
+    static bool isLetter(char c) { return ((c > 64 && c < 91) || (c > 96 && c < 123) || c == 95);}
 
 private:
     std::unique_ptr<Tokens::BaseTk> nextToken(LexerStatus& ret_st);
     std::unique_ptr<Tokens::BaseTk> getTokenFromWord(LexerStatus& ret_st);
     std::unique_ptr<Tokens::BaseTk> initToken(std::unique_ptr<Tokens::BaseTk> tk);
-    TokenType getDelimiterType(unsigned char c);
+    TokenType getDelimiterType(char c);
 
-    char checkEndline(unsigned char c, bool doMove = false); // Returns the number of characters in the endline processed, if any
-    bool lookAhead(unsigned char& c) const noexcept;
-    bool get(unsigned char& c) const noexcept;
+    char checkEndline(char c, bool doMove = false); // Returns the number of characters in the endline processed, if any
+    bool lookAhead(char& c) const noexcept;
+    bool get(char& c) const noexcept;
     inline void move(unsigned long step) noexcept;
     inline unsigned long currTkLen() const noexcept { return pos_ - currTkStart_; }
 

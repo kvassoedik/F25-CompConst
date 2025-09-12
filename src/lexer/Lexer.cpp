@@ -61,7 +61,7 @@ std::vector<std::unique_ptr<Tokens::BaseTk>> Lexer::scan() {
             std::istreambuf_iterator<char>());
 
     std::vector<std::unique_ptr<Tokens::BaseTk>> tokens;
-    LexerStatus st = LexerStatus::NONE;
+    LexerStatus st = LexerStatus::NONE; // LexerStatus does nothing. Could be for extensibility to Formatters, Intellisense
 
     do {
         auto tk = nextToken(st);
@@ -71,7 +71,7 @@ std::vector<std::unique_ptr<Tokens::BaseTk>> Lexer::scan() {
         tokens.emplace_back(std::move(tk));
         #else
         // Don't include spaces and comments
-        if (static_cast<unsigned int>(tk->type) > 8 ||
+        if (static_cast<unsigned int>(tk->type) > 9 ||
             (static_cast<unsigned int>(tk->type) > 2 && static_cast<unsigned int>(tk->type) < 5))
         {
             tokens.emplace_back(std::move(tk));
@@ -97,12 +97,16 @@ bool Lexer::releaseErrors() {
         if (lineTooLong)
             file_->clear();
 
+        unsigned long maxArrowsLen = 56 - (err.span.start - displayStart);
         std::cout << ANSI_START ANSI_BOLD ANSI_APPLY << fileName_ << ":" << err.span.line << ":"
-            << err.span.start << ANSI_RESET << ": " // Display column right before the start of the erroneous token
+            << err.span.start - err.lineStart + 1 << ANSI_RESET << ": " // Display column right before the start of the erroneous token
             << ANSI_START ANSI_RED ANSI_AND ANSI_BOLD ANSI_APPLY "error" ANSI_RESET ": " << std::move(err.message) << "\n"
             << logger_.numberedWall(err.span.line + 1) << buf << (lineTooLong ? "..." : "") << "\n"
             << logger_.wall() << ANSI_START ANSI_RED ANSI_APPLY
-            << logger_.arrows(err.span.start - displayStart, (err.span.end - err.span.start > 56) ? 56 : err.span.end - err.span.start) << ANSI_RESET << "\n";
+            << logger_.arrows(
+                err.span.start - displayStart,
+                (err.span.end - err.span.start > maxArrowsLen) ? maxArrowsLen : err.span.end - err.span.start
+            ) << ANSI_RESET << "\n";
     }
 
     errors_.clear();
@@ -110,8 +114,17 @@ bool Lexer::releaseErrors() {
 }
 
 std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
-    unsigned char c;
+    char c;
     while (get(c)) {
+        if (c < 0) {
+            move(1);
+            saveError(LexerStatus::NON_ASCII, "non-ASCII character encountered (ASCII "
+                + std::to_string(static_cast<int>(static_cast<unsigned char>(c))) + ")");
+            pos_--;
+
+            // Immediatelly break, as multi-byte characters break the position accounting (one character consumes several steps)
+            break;
+        }
         if (canLog(2)) {
             switch (c)
             {
@@ -139,14 +152,17 @@ std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
                     continue;
                 }
 
-                unsigned char c2;
+                char c2;
                 if (!lookAhead(c2)) break; // EOF
                 if ('/' != c2) {
                     move(1);
                     continue;
                 }
 
-                if (canLog(2)) std::cout << "Closing a comment\n";
+                if (canLog(2)) {
+                    std::cout << "Skip character: " << c2 << "\n";
+                    std::cout << "Closing a comment\n";
+                }
             } else {
                 char endlineNum = checkEndline(c);
                 if (!endlineNum) {
@@ -168,7 +184,7 @@ std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
         // A dot?
         if (c == '.') {
             bool isDoubleDot = false;
-            unsigned char c2;
+            char c2;
 
             if (!lookAhead(c2)) break;
             if (c2 == '.') {
@@ -216,34 +232,33 @@ std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
         }
 
         TokenType type = getDelimiterType(c);
+        move(1);
+
         if (type == TokenType::INVALID) {
-            move(1);
-            saveError(LexerStatus::UNRECOGNIZED_SYMBOL, "Unrecognized symbol: "
-                + std::string(1, c)
-                + " (ASCII " + std::to_string(static_cast<int>(c)) + ")"
+            saveError(LexerStatus::UNSUPPORTED_SYMBOL, "Unsupported symbol: "
+                + std::string{c}
+                + " (ASCII " + std::to_string(static_cast<int>(static_cast<unsigned char>(c))) + ")"
             );
         }
 
-        move(1);
         return initToken(std::make_unique<Tokens::BaseTk>(type));
     }
 
-    bits_.eof = true;
     if (canLog(1)) std::cout << "==> REACHED EOF <==\n";
-
     if (currTkLen() == 0) {
-        return initToken(std::make_unique<Tokens::BaseTk>(TokenType::SPACE));
+        bits_.eof = true;
+        return initToken(std::make_unique<Tokens::BaseTk>(TokenType::END_OF_FILE));
     }
     
     if (bits_.commentStarted) {
         return initToken(std::make_unique<Tokens::BaseTk>(TokenType::COMMENT_BODY));
+    } else {
+        TokenType tt = getDelimiterType(c);
+        if (tt != TokenType::INVALID) {
+            return initToken(std::make_unique<Tokens::BaseTk>(tt));
+        }
+        return initToken(getTokenFromWord(ret_st));
     }
-
-    TokenType tt = getDelimiterType(c);
-    if (tt != TokenType::INVALID) {
-        return initToken(std::make_unique<Tokens::BaseTk>(tt));
-    }
-    return initToken(getTokenFromWord(ret_st));
 }
 
 std::unique_ptr<Tokens::BaseTk> Lexer::getTokenFromWord(LexerStatus& ret_st) {
@@ -260,7 +275,7 @@ std::unique_ptr<Tokens::BaseTk> Lexer::getTokenFromWord(LexerStatus& ret_st) {
     if (isDigit(word[0]) || word[0] == '.') {
         bool isReal = false;
 
-        for (unsigned char c: word) {
+        for (char c: word) {
             if (c == '.') {
                 if (isReal) {
                     saveError(LexerStatus::REAL_MANY_DOTS, "real literal with multiple dots encountered");
@@ -279,10 +294,10 @@ std::unique_ptr<Tokens::BaseTk> Lexer::getTokenFromWord(LexerStatus& ret_st) {
             size_t dotPos;
 
             for (dotPos = 0; dotPos < word.size(); ++dotPos) {
-                unsigned char c = word[dotPos];
+                char c = word[dotPos];
                 if (c == '.') break;
 
-                unsigned char digit = c - '0';
+                char digit = c - '0';
                 if (value > std::numeric_limits<double>::max() - digit
                     || value + digit > std::numeric_limits<double>::max() / 10) {
                         saveError(LexerStatus::REAL_EXCEED, "real literal exceeded max limit");
@@ -306,8 +321,8 @@ std::unique_ptr<Tokens::BaseTk> Lexer::getTokenFromWord(LexerStatus& ret_st) {
         } else {
             long value = 0;
             
-            for (unsigned char c: word) {
-                unsigned char digit = c - '0';
+            for (char c: word) {
+                char digit = c - '0';
 
                 if (value > std::numeric_limits<long>::max() - digit
                     || value + digit > std::numeric_limits<long>::max() / 10 + 7) {
@@ -349,16 +364,17 @@ std::unique_ptr<Tokens::BaseTk> Lexer::initToken(std::unique_ptr<Tokens::BaseTk>
     return tk;
 }
 
-TokenType Lexer::getDelimiterType(unsigned char c) {
+TokenType Lexer::getDelimiterType(char c) {
     switch (c) {
         case ' ': return TokenType::SPACE;
         case '\t': return TokenType::INDENT;
         case ';': return TokenType::SEMICOLON;
         case ':': {
-            unsigned char c2;
+            char c2;
             if (lookAhead(c2))
                 if ('=' == c2) {
                     move(1);
+                    if (canLog(2)) std::cout << "Skip character: " << c2 << "\n";
                     return TokenType::ASSIGNMENT;
                 }
             return TokenType::COLON;
@@ -366,60 +382,71 @@ TokenType Lexer::getDelimiterType(unsigned char c) {
         case '+': return TokenType::PLUS;
         case '-': return TokenType::MINUS;
         case '=': {
-            unsigned char c2;
+            char c2;
             if (lookAhead(c2))
                 if ('>' == c2) {
                     move(1);
+                    if (canLog(2)) std::cout << "Skip character: " << c2 << "\n";
                     return TokenType::ROUTINE_ARROW;
                 }
             return TokenType::EQUAL;
         }
         case '/': {
-            unsigned char c2;
+            char c2;
             if (lookAhead(c2)) {
                 if ('*' == c2) {
                     bits_.commentStarted = true;
                     bits_.commentMultiline = true;
                     move(1);
-                    if (canLog(2)) std::cout << "Opening a comment\n";
+                    if (canLog(2)) {
+                        std::cout << "Skip character: " << c2 << "\n";
+                        std::cout << "Opening a comment\n";
+                    }
                     return TokenType::COMMENT_OPEN;
                 } else if ('/' == c2) {
                     bits_.commentStarted = true;
                     bits_.commentMultiline = false;
                     move(1);
-                    if (canLog(2)) std::cout << "Oneline comment\n";
+                    if (canLog(2)) {
+                        std::cout << "Skip character: " << c2 << "\n";
+                        std::cout << "Oneline comment\n";
+                    }
                     return TokenType::COMMENT_ONELINE;
                 } else if ('=' == c2) {
                     move(1);
+                    if (canLog(2)) std::cout << "Skip character: " << c2 << "\n";
                     return TokenType::UNEQUAL;
                 }
             }
             return TokenType::DIVIDE;
         }
         case '*': {
-            unsigned char c2;
+            char c2;
             if (lookAhead(c2))
                 if ('/' == c2) {
                     move(1);
+                    if (canLog(2)) std::cout << "Skip character: " << c2 << "\n";
                     return TokenType::COMMENT_CLOSE;
                 }
             return TokenType::TIMES;
         }
         case '%': return TokenType::MODULO;
         case '<': {
-            unsigned char c2;
+            char c2;
             if (lookAhead(c2))
                 if ('=' == c2) {
                     move(1);
+                    if (canLog(2)) std::cout << "Skip character: " << c2 << "\n";
                     return TokenType::LESS_OR_EQUAL;
                 }
             return TokenType::LESS_THAN;
         }
         case '>': {
-            unsigned char c2;
+            char c2;
             if (lookAhead(c2))
                 if ('=' == c2) {
                     move(1);
+                    if (canLog(2)) std::cout << "Skip character: " << c2 << "\n";
                     return TokenType::MORE_OR_EQUAL;
                 }
             return TokenType::MORE_THAN;
@@ -434,11 +461,11 @@ TokenType Lexer::getDelimiterType(unsigned char c) {
     }
 }
 
-char Lexer::checkEndline(unsigned char c, bool doMove) {
+char Lexer::checkEndline(char c, bool doMove) {
     if (c == 10 || c == 13) { // Line Feed + Carriage Return
         // If it's Windows notation (CRLF), skip over both characters
         if (c == 13) {
-            unsigned char c2;
+            char c2;
             if (lookAhead(c2)) {
                 if (c2 != 10) {
                     saveError(LexerStatus::CR_NO_LF, "encountered Carriage Return without Line Feed");
@@ -455,14 +482,14 @@ char Lexer::checkEndline(unsigned char c, bool doMove) {
     return 0;
 }
 
-bool Lexer::lookAhead(unsigned char &c) const noexcept {
+bool Lexer::lookAhead(char &c) const noexcept {
     if (pos_ + 1 > buf_.size())
         return false;
     c = buf_[pos_ + 1];
     return true;
 }
 
-bool Lexer::get(unsigned char &c) const noexcept {
+bool Lexer::get(char &c) const noexcept {
     if (pos_ >= buf_.size())
         return false;
     c = buf_[pos_];

@@ -49,7 +49,7 @@ int main(int argc, char **argv) {
     try {
         tokens = lexer.scan();
     } catch(std::runtime_error e) {
-        std::cerr << "------ ERROR compiling file (lx): " << fileName << "\n" << e.what() << "\n";
+        std::cerr << "------ UNEXPECTED EXCEPTION scanning file (lx): " << fileName << "\n" << e.what() << "\n";
         return 3;
     }
     if (lexer.releaseErrors()) {
