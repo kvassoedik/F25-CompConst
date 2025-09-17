@@ -29,7 +29,7 @@ private:
     std::unique_ptr<Tokens::BaseTk> initToken(std::unique_ptr<Tokens::BaseTk> tk);
     TokenType getDelimiterType(char c);
 
-    char checkEndline(char c, bool doMove = false); // Returns the number of characters in the endline processed, if any
+    bool isEndline(char c, bool doMove); // Returns the number of characters in the endline processed, if any
     bool lookAhead(char& c) const noexcept;
     bool get(char& c) const noexcept;
     inline void move(unsigned long step) noexcept;

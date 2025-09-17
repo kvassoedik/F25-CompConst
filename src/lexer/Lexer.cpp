@@ -86,22 +86,24 @@ bool Lexer::releaseErrors() {
     bool hasErrors = !errors_.empty();
     for (auto& err: errors_) {
         // Output the erroneous line
-        char buf[56];
-
         // 16 chars back, the rest is forward
         unsigned long displayStart = ((err.span.start < 16 || err.lineStart + 16 > err.span.start) ? err.lineStart: err.span.start - 16);
-        file_->seekg(displayStart); 
-        file_->getline(buf, 56);
 
-        bool lineTooLong = file_->fail();
-        if (lineTooLong)
-            file_->clear();
+        char buf[56];
+        int i = 0;
+        for (pos_ = displayStart; i < 56; pos_ = displayStart + ++i) {
+            if (isEndline(buf_[pos_], false)) break;
+            buf[i] = buf_[pos_];
+        }
+
+        buf[i] = '\0';
+        bool lineTooLong = i == 56;
 
         unsigned long maxArrowsLen = 56 - (err.span.start - displayStart);
         std::cout << ANSI_START ANSI_BOLD ANSI_APPLY << fileName_ << ":" << err.span.line << ":"
             << err.span.start - err.lineStart + 1 << ANSI_RESET << ": " // Display column right before the start of the erroneous token
             << ANSI_START ANSI_RED ANSI_AND ANSI_BOLD ANSI_APPLY "error" ANSI_RESET ": " << std::move(err.message) << "\n"
-            << logger_.numberedWall(err.span.line + 1) << buf << (lineTooLong ? "..." : "") << "\n"
+            << logger_.numberedWall(err.span.line) << buf << (lineTooLong ? "..." : "") << "\n"
             << logger_.wall() << ANSI_START ANSI_RED ANSI_APPLY
             << logger_.arrows(
                 err.span.start - displayStart,
@@ -164,8 +166,7 @@ std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
                     std::cout << "Closing a comment\n";
                 }
             } else {
-                char endlineNum = checkEndline(c);
-                if (!endlineNum) {
+                if (!isEndline(c, false)) {
                     move(1);
                     continue;
                 }
@@ -223,7 +224,7 @@ std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
         }
 
         // An endline?
-        if (checkEndline(c, true)) {
+        if (isEndline(c, true)) {
             move(1);
             auto tk = initToken(std::make_unique<Tokens::BaseTk>(TokenType::ENDLINE));
             lineNum_++;
@@ -461,7 +462,7 @@ TokenType Lexer::getDelimiterType(char c) {
     }
 }
 
-char Lexer::checkEndline(char c, bool doMove) {
+bool Lexer::isEndline(char c, bool doMove) {
     if (c == 10 || c == 13) { // Line Feed + Carriage Return
         // If it's Windows notation (CRLF), skip over both characters
         if (c == 13) {
@@ -474,12 +475,11 @@ char Lexer::checkEndline(char c, bool doMove) {
                 }
                 if (doMove)
                     move(1);
-                return 2;
             }
         }
-        return 1;
+        return true;
     }
-    return 0;
+    return false;
 }
 
 bool Lexer::lookAhead(char &c) const noexcept {
