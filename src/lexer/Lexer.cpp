@@ -308,17 +308,17 @@ std::unique_ptr<Tokens::BaseTk> Lexer::getTokenFromWord(LexerStatus& ret_st) {
                 value = value * 10 + digit;
             }
 
-            double residue = 0;
+            double fraction = 0;
             for (size_t i = word.size()-1; i > dotPos; --i) {
-                residue = (residue + (word[i] - '0'))/10.0;
+                fraction = (fraction + (word[i] - '0')) * 0.1;
             }
 
-            if (value > std::numeric_limits<double>::max() - residue) {
-                saveError(LexerStatus::REAL_EXCEED, "real literal exceeded max limit when applying denorm");
+            if (value > std::numeric_limits<double>::max() - fraction) {
+                saveError(LexerStatus::REAL_EXCEED, "real literal exceeded max limit with fraction");
                 return std::make_unique<Tokens::BaseTk>(TokenType::INVALID);
             }
 
-            return std::make_unique<Tokens::RealTk>(value + residue);
+            return std::make_unique<Tokens::RealTk>(value + fraction);
         } else {
             long value = 0;
             

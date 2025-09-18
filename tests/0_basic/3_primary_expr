@@ -1,6 +1,6 @@
 var x is 10
 var y is 20
-var z is 0-x
+var z is -x
 
 // Primary on integers
 routine main() is

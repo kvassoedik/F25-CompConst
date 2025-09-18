@@ -1,5 +1,5 @@
 var a: array[5] integer
 
 routine main() is
-    print a[6] // should throw, out-of-bounds
+    print a[0] // should throw, out-of-bounds
 end
