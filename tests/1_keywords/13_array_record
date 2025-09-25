@@ -1,0 +1,6 @@
+var Z: array[3] record var arr: array[3] integer end
+Z[2].arr[1] := 5
+
+routine main() is
+    print Z[1+1].arr[-1-(-2)] // 5
+end
