@@ -7,8 +7,9 @@
 #include <unordered_set>
 #include <cmath>
 #include <sstream>
+#include <algorithm>
 
-#define SAVE_EXCESSIVE_TOKENS 1
+#define SAVE_EXCESSIVE_TOKENS 0
 
 static std::unordered_map<std::string_view, TokenType> KEYWORDS
 {
@@ -35,6 +36,26 @@ static std::unordered_map<std::string_view, TokenType> KEYWORDS
     {"real", TokenType::RealType},
     {"boolean", TokenType::BooleanType},
 };
+
+int Lexer::configure(int* argc, char** argv) {
+    for (int i = 1; i < *argc-1; ++i) {
+        std::string_view arg(argv[i]);
+
+        if (arg.size() > 4 &&
+            "-lx" == arg.substr(0, 3))
+        {
+            // Messages
+            std::string_view option = arg.substr(3);
+            if ('V' == option.at(0)) {
+                logVerbosity_ = std::clamp(std::atoi(option.substr(1).data()), 0, 2);
+            } else {
+                std::cerr << "Unrecognized lx option: " << option << "\n";
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
 
 bool Lexer::openFile(const char* fileName) {
     auto file = std::make_unique<std::ifstream>();

@@ -1,4 +1,4 @@
-routine main() is
+routine main(1) is
     print true
     print false
     print

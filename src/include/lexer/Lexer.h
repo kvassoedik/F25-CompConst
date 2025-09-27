@@ -13,9 +13,7 @@
 
 class Lexer {
 public:
-    Lexer(int logVerbosity):
-        logVerbosity_(logVerbosity) {}
-
+    int configure(int* argc, char** argv);
     bool openFile(const char* fileName);
     std::vector<std::shared_ptr<Tokens::BaseTk>> scan();
     bool releaseErrors();
@@ -50,7 +48,10 @@ private:
     std::string fileName_;
     std::string buf_;
     unsigned long pos_, lineNum_, lineStartPos_, currTkStart_;
-    int logVerbosity_;
+
+    // Flags
+    int logVerbosity_{0};
+    //
 
     struct {
         bool eof: 1;
