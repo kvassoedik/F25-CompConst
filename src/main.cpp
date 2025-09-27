@@ -1,4 +1,6 @@
 #include "lexer/Lexer.h"
+#include "lexer/TokenList.h"
+#include "ast/Parser.h"
 #include <iostream>
 #include <algorithm>
 
@@ -45,9 +47,9 @@ int main(int argc, char **argv) {
         return 3;
     }
 
-    std::vector<std::unique_ptr<Tokens::BaseTk>> tokens;
+    std::vector<std::shared_ptr<Tokens::BaseTk>> tokens;
     try {
-        tokens = lexer.scan();
+        tokens = std::move(lexer.scan());
     } catch(std::runtime_error e) {
         std::cerr << "------ UNEXPECTED EXCEPTION scanning file (lx): " << fileName << "\n" << e.what() << "\n";
         return 3;

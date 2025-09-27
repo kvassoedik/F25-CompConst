@@ -16,17 +16,17 @@ public:
     Lexer(int logVerbosity):
         logVerbosity_(logVerbosity) {}
 
-    bool openFile(char* fileName);
-    std::vector<std::unique_ptr<Tokens::BaseTk>> scan();
+    bool openFile(const char* fileName);
+    std::vector<std::shared_ptr<Tokens::BaseTk>> scan();
     bool releaseErrors();
 
     static bool isDigit(char c) { return (c > 47 && c < 58);}
     static bool isLetter(char c) { return ((c > 64 && c < 91) || (c > 96 && c < 123) || c == 95);}
 
 private:
-    std::unique_ptr<Tokens::BaseTk> nextToken(LexerStatus& ret_st);
-    std::unique_ptr<Tokens::BaseTk> getTokenFromWord(LexerStatus& ret_st);
-    std::unique_ptr<Tokens::BaseTk> initToken(std::unique_ptr<Tokens::BaseTk> tk);
+    std::shared_ptr<Tokens::BaseTk> nextToken(LexerStatus& ret_st);
+    std::shared_ptr<Tokens::BaseTk> getTokenFromWord(LexerStatus& ret_st);
+    void initToken(std::shared_ptr<Tokens::BaseTk>& tk);
     TokenType getDelimiterType(char c);
 
     bool isEndline(char c, bool doMove); // Returns the number of characters in the endline processed, if any
@@ -45,7 +45,6 @@ private:
     };
 
     Logger logger_;
-    std::vector<std::unique_ptr<Tokens::BaseTk>> tokens_;
     std::vector<LexerError> errors_;
     std::unique_ptr<std::ifstream> file_{nullptr};
     std::string fileName_;

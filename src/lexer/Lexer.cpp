@@ -36,7 +36,7 @@ static std::unordered_map<std::string_view, TokenType> KEYWORDS
     {"boolean", TokenType::BooleanType},
 };
 
-bool Lexer::openFile(char* fileName) {
+bool Lexer::openFile(const char* fileName) {
     auto file = std::make_unique<std::ifstream>();
     file->open(fileName, std::ios::in);
     if (!file->is_open()) return false;
@@ -53,14 +53,14 @@ bool Lexer::openFile(char* fileName) {
     return true;
 }
 
-std::vector<std::unique_ptr<Tokens::BaseTk>> Lexer::scan() {
+std::vector<std::shared_ptr<Tokens::BaseTk>> Lexer::scan() {
     if (!file_)
         throw std::runtime_error("No opened file.");
 
     buf_.assign((std::istreambuf_iterator<char>(*file_)),
             std::istreambuf_iterator<char>());
 
-    std::vector<std::unique_ptr<Tokens::BaseTk>> tokens;
+    std::vector<std::shared_ptr<Tokens::BaseTk>> tokens;
     LexerStatus st = LexerStatus::NONE; // LexerStatus does nothing. Could be for extensibility to Formatters, Intellisense
 
     do {
@@ -115,7 +115,7 @@ bool Lexer::releaseErrors() {
     return hasErrors;
 }
 
-std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
+std::shared_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
     char c;
     while (get(c)) {
         if (c < 0) {
@@ -173,7 +173,8 @@ std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
             }
             bits_.commentStarted = false;
 
-            return initToken(std::make_unique<Tokens::BaseTk>(TokenType::COMMENT_BODY));
+            auto tk = std::make_shared<Tokens::BaseTk>(TokenType::COMMENT_BODY); initToken(tk);
+            return tk;
         }
 
         // Accumulate word
@@ -195,7 +196,8 @@ std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
                     move(2); // Step to the 2nd dot and past it
                     if (canLog(2)) std::cout << "Skip character: " << c2 << "\n";
 
-                    return initToken(std::make_unique<Tokens::BaseTk>(TokenType::DOUBLE_DOT));
+                    auto tk = std::make_shared<Tokens::BaseTk>(TokenType::DOUBLE_DOT); initToken(tk);
+                    return tk;
                 }
             }
             // Otherwise, step back and process the previous word
@@ -220,13 +222,14 @@ std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
         // Flush the accumulated word
         if (currTkLen() > 0) {
             // Process the previously stored word first, this delimiter will be parsed later
-            return initToken(getTokenFromWord(ret_st));
+            auto tk = getTokenFromWord(ret_st); initToken(tk);
+            return tk;
         }
 
         // An endline?
         if (isEndline(c, true)) {
             move(1);
-            auto tk = initToken(std::make_unique<Tokens::BaseTk>(TokenType::ENDLINE));
+            auto tk = std::make_shared<Tokens::BaseTk>(TokenType::ENDLINE); initToken(tk);
             lineNum_++;
             lineStartPos_ = pos_;
             return tk;
@@ -242,27 +245,32 @@ std::unique_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
             );
         }
 
-        return initToken(std::make_unique<Tokens::BaseTk>(type));
+        auto tk = std::make_shared<Tokens::BaseTk>(type); initToken(tk);
+        return tk;
     }
 
     if (canLog(1)) std::cout << "==> REACHED EOF <==\n";
     if (currTkLen() == 0) {
         bits_.eof = true;
-        return initToken(std::make_unique<Tokens::BaseTk>(TokenType::END_OF_FILE));
+        auto tk = std::make_shared<Tokens::BaseTk>(TokenType::END_OF_FILE); initToken(tk);
+        return tk;
     }
     
     if (bits_.commentStarted) {
-        return initToken(std::make_unique<Tokens::BaseTk>(TokenType::COMMENT_BODY));
+        auto tk = std::make_shared<Tokens::BaseTk>(TokenType::COMMENT_BODY); initToken(tk);
+        return tk;
     } else {
         TokenType tt = getDelimiterType(c);
         if (tt != TokenType::INVALID) {
-            return initToken(std::make_unique<Tokens::BaseTk>(tt));
+            auto tk = std::make_shared<Tokens::BaseTk>(tt); initToken(tk);
+            return tk;
         }
-        return initToken(getTokenFromWord(ret_st));
+        auto tk = getTokenFromWord(ret_st); initToken(tk);
+        return tk;
     }
 }
 
-std::unique_ptr<Tokens::BaseTk> Lexer::getTokenFromWord(LexerStatus& ret_st) {
+std::shared_ptr<Tokens::BaseTk> Lexer::getTokenFromWord(LexerStatus& ret_st) {
     std::string_view word(buf_.c_str() + currTkStart_, pos_ - currTkStart_);
     if (word.empty())
         throw std::runtime_error("cannot lex an empty word");
@@ -342,7 +350,7 @@ std::unique_ptr<Tokens::BaseTk> Lexer::getTokenFromWord(LexerStatus& ret_st) {
     return std::make_unique<Tokens::IdentifierTk>(std::string(word.data(), word.size()));
 }
 
-std::unique_ptr<Tokens::BaseTk> Lexer::initToken(std::unique_ptr<Tokens::BaseTk> tk) {
+void Lexer::initToken(std::shared_ptr<Tokens::BaseTk>& tk) {
     tk->span.line = lineNum_;
     tk->span.start = currTkStart_;
     tk->span.end = pos_;
@@ -361,8 +369,6 @@ std::unique_ptr<Tokens::BaseTk> Lexer::initToken(std::unique_ptr<Tokens::BaseTk>
     default: tk->_str = std::move(buf_.substr(tk->span.start, tk->span.end - tk->span.start));
     }
     #endif
-
-    return tk;
 }
 
 TokenType Lexer::getDelimiterType(char c) {
