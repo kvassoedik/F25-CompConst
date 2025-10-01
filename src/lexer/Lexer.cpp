@@ -1,6 +1,6 @@
 #include "lexer/Lexer.h"
 #include "lexer/Token.h"
-#include "utils/PrintingUtils.h"
+#include "report/Report.h"
 #include <iostream>
 #include <vector>
 #include <unordered_map>
@@ -84,36 +84,7 @@ std::vector<std::shared_ptr<Tokens::BaseTk>> Lexer::scan() {
 }
 
 bool Lexer::releaseErrors() {
-    bool hasErrors = !errors_.empty();
-    for (auto& err: errors_) {
-        // Output the erroneous line
-        // 16 chars back, the rest is forward
-        unsigned long displayStart = ((err.span.start < 16 || err.lineStart + 16 > err.span.start) ? err.lineStart: err.span.start - 16);
-
-        char buf[56];
-        int i = 0;
-        for (pos_ = displayStart; i < 56; pos_ = displayStart + ++i) {
-            if (isEndline((*file_)[pos_], false)) break;
-            buf[i] = (*file_)[pos_];
-        }
-
-        buf[i] = '\0';
-        bool lineTooLong = i == 56;
-
-        unsigned long maxArrowsLen = 56 - (err.span.start - displayStart);
-        std::cout << ANSI_START ANSI_BOLD ANSI_APPLY << file_->fileName() << ":" << err.span.line << ":"
-            << err.span.start - err.lineStart + 1 << ANSI_RESET << ": " // Display column right before the start of the erroneous token
-            << ANSI_START ANSI_RED ANSI_AND ANSI_BOLD ANSI_APPLY "error" ANSI_RESET ": " << std::move(err.message) << "\n"
-            << logger_.numberedWall(err.span.line) << buf << (lineTooLong ? "..." : "") << "\n"
-            << logger_.wall() << ANSI_START ANSI_RED ANSI_APPLY
-            << logger_.arrows(
-                err.span.start - displayStart,
-                (err.span.end - err.span.start > maxArrowsLen) ? maxArrowsLen : err.span.end - err.span.start
-            ) << ANSI_RESET << "\n";
-    }
-
-    errors_.clear();
-    return hasErrors;
+    return reporter_.reportAll();
 }
 
 std::shared_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
@@ -121,7 +92,7 @@ std::shared_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
     while (get(c)) {
         if (c < 0) {
             move(1);
-            saveError(LexerStatus::NON_ASCII, "non-ASCII character encountered (ASCII "
+            saveError(LexerStatus::LX_NON_ASCII, "non-ASCII character encountered (ASCII "
                 + std::to_string(static_cast<int>(static_cast<unsigned char>(c))) + ")");
             pos_--;
 
@@ -232,7 +203,8 @@ std::shared_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
             move(1);
             auto tk = std::make_shared<Tokens::BaseTk>(TokenType::ENDLINE); initToken(tk);
             lineNum_++;
-            lineStartPos_ = pos_;
+
+            file_->lineStarts.push_back(pos_); // remember where the next line has started
             return tk;
         }
 
@@ -240,7 +212,7 @@ std::shared_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
         move(1);
 
         if (type == TokenType::INVALID) {
-            saveError(LexerStatus::UNSUPPORTED_SYMBOL, "Unsupported symbol: "
+            saveError(LexerStatus::LX_UNSUPPORTED_SYMBOL, "Unsupported symbol: "
                 + std::string{c}
                 + " (ASCII " + std::to_string(static_cast<int>(static_cast<unsigned char>(c))) + ")"
             );
@@ -288,12 +260,12 @@ std::shared_ptr<Tokens::BaseTk> Lexer::getTokenFromWord(LexerStatus& ret_st) {
         for (char c: word) {
             if (c == '.') {
                 if (isReal) {
-                    saveError(LexerStatus::REAL_MANY_DOTS, "real literal with multiple dots encountered");
+                    saveError(LexerStatus::LX_REAL_MANY_DOTS, "real literal with multiple dots encountered");
                     return std::make_unique<Tokens::BaseTk>(TokenType::INVALID);
                 }
                 isReal = true;
             } else if (!isDigit(c)) {
-                saveError(LexerStatus::NUMBER_WITH_LETTER, "invalid number form containing a letter");
+                saveError(LexerStatus::LX_NUMBER_WITH_LETTER, "invalid number form containing a letter");
                 return std::make_unique<Tokens::BaseTk>(TokenType::INVALID);
             }
         }
@@ -310,7 +282,7 @@ std::shared_ptr<Tokens::BaseTk> Lexer::getTokenFromWord(LexerStatus& ret_st) {
                 char digit = c - '0';
                 if (value > std::numeric_limits<double>::max() - digit
                     || value + digit > std::numeric_limits<double>::max() / 10) {
-                        saveError(LexerStatus::REAL_EXCEED, "real literal exceeded max limit");
+                        saveError(LexerStatus::LX_REAL_EXCEED, "real literal exceeded max limit");
                         return std::make_unique<Tokens::BaseTk>(TokenType::INVALID);
                     }
 
@@ -323,7 +295,7 @@ std::shared_ptr<Tokens::BaseTk> Lexer::getTokenFromWord(LexerStatus& ret_st) {
             }
 
             if (value > std::numeric_limits<double>::max() - fraction) {
-                saveError(LexerStatus::REAL_EXCEED, "real literal exceeded max limit with fraction");
+                saveError(LexerStatus::LX_REAL_EXCEED, "real literal exceeded max limit with fraction");
                 return std::make_unique<Tokens::BaseTk>(TokenType::INVALID);
             }
 
@@ -336,7 +308,7 @@ std::shared_ptr<Tokens::BaseTk> Lexer::getTokenFromWord(LexerStatus& ret_st) {
 
                 if (value > std::numeric_limits<long>::max() - digit
                     || value + digit > std::numeric_limits<long>::max() / 10 + 7) {
-                        saveError(LexerStatus::INT_EXCEED, "integer literal exceeded max limit");
+                        saveError(LexerStatus::LX_INT_EXCEED, "integer literal exceeded max limit");
                         return std::make_unique<Tokens::BaseTk>(TokenType::INVALID);
                     }
 
@@ -476,7 +448,7 @@ bool Lexer::isEndline(char c, bool doMove) {
             char c2;
             if (lookAhead(c2)) {
                 if (c2 != 10) {
-                    saveError(LexerStatus::CR_NO_LF, "encountered Carriage Return without Line Feed");
+                    saveError(LexerStatus::LX_CR_NO_LF, "encountered Carriage Return without Line Feed");
                     bits_.eof = true;
                     return 1;
                 }
@@ -508,11 +480,13 @@ void Lexer::move(unsigned long step) noexcept {
 }
 
 void Lexer::saveError(LexerStatus st, std::string reason) {
-    LexerError err;
-    err.message = std::move(reason);
-    err.span.line = lineNum_;
-    err.span.start = currTkStart_;
-    err.span.end = pos_;
-    err.lineStart = lineStartPos_;
-    errors_.push_back(err);
+    reporter_.report({
+        .level = CompileMsg::Level::Error,
+        .message = std::move(reason),
+        .span = {
+            .line = lineNum_,
+            .start = currTkStart_,
+            .end = pos_,
+        },
+    });
 }

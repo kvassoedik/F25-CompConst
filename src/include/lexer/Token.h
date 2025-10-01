@@ -7,8 +7,7 @@
 
 namespace Tokens {
     struct Span {
-        unsigned long line;
-        unsigned int start, end;
+        unsigned long line, start, end;
     };
 
     struct BaseTk {

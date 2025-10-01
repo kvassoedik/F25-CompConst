@@ -2,6 +2,7 @@
 
 #include <fstream>
 #include <memory>
+#include <vector>
 
 class FileReader final {
 public:
@@ -14,7 +15,11 @@ public:
         buf_.assign((std::istreambuf_iterator<char>(*file)),
             std::istreambuf_iterator<char>());
         fileName_ = std::string(fileName);
-        file_ = std::move(file);
+
+        lineStarts.reserve(10000);
+        lineStarts.push_back(0);
+
+        file_ = std::move(file); // doing LAST for exception safety
     }
     FileReader(FileReader& rhs) = delete;
     FileReader(FileReader&& rhs) {
@@ -32,6 +37,8 @@ public:
     inline size_t size() const noexcept { return buf_.size(); } 
     inline const char* c_str() const noexcept { return buf_.c_str(); }
     inline std::string substr(std::size_t __pos = 0UL, std::size_t __n = 18446744073709551615UL) const { return buf_.substr(__pos, __n); }
+public:
+    std::vector<unsigned long> lineStarts;
 private:
     void swap(FileReader&& rhs) {
         std::swap(file_, rhs.file_);
@@ -39,7 +46,7 @@ private:
         std::swap(buf_, rhs.buf_);
     }
 private:
-    std::unique_ptr<std::ifstream> file_{nullptr};
     std::string fileName_;
     std::string buf_;
+    std::unique_ptr<std::ifstream> file_{nullptr};
 };

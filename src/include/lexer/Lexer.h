@@ -4,9 +4,8 @@
 
 #pragma once
 
-#include "lexer/Token.h"
 #include "lexer/LexerStatus.h"
-#include "utils/Logger.h"
+#include "report/Report.h"
 #include "FileReader.h"
 #include <vector>
 
@@ -37,16 +36,10 @@ private:
     bool canLog(int verbosityLevel) const noexcept { return verbosityLevel <= logVerbosity_; }
     void saveError(LexerStatus st, std::string reason);
 private:
-    struct LexerError {
-        std::string message;
-        Tokens::Span span;
-        unsigned long lineStart;
-    };
-
-    Logger logger_;
     std::shared_ptr<FileReader> file_;
-    std::vector<LexerError> errors_;
-    unsigned long pos_{0}, lineNum_{1}, lineStartPos_{0}, currTkStart_{0};
+    Reporter reporter_{file_};
+    std::vector<CompileMsg> msgs_;
+    unsigned long pos_{0}, lineNum_{1}, currTkStart_{0};
 
     // Flags
     int logVerbosity_{0};

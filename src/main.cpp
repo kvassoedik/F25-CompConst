@@ -25,18 +25,19 @@ int main(int argc, char **argv) {
             return 0;
         }
     }
-    char* fileName = argv[argc - 1];
 
+    char* fileName = argv[argc - 1];
     auto&& file = std::make_shared<FileReader>(fileName);
     if (!file->isOpen()) {
         std::cerr << "Could not open a file " << argv[1] << "\n";
         return 2;
     }
+
     Lexer lexer(file);
     if (lexer.configure(&argc, argv) != 0)
         return 3;
 
-    Parser parser;
+    Parser parser(file);
     if (parser.configure(&argc, argv) != 0)
         return 3;
 
@@ -48,14 +49,13 @@ int main(int argc, char **argv) {
         std::cerr << "------ UNEXPECTED EXCEPTION scanning file (lx): " << fileName << "\n" << e.what() << "\n";
         return 3;
     }
-    if (lexer.releaseErrors()) {
+    if (lexer.releaseErrors())
         return 4;
-    }
 
-    std::cout << "======= TOKEN SEQUENCE =======\n";
-    for (auto& t: tokens) {
-        std::cout << *t << "\n";
-    }
+    // std::cout << "======= TOKEN SEQUENCE =======\n";
+    // for (auto& t: tokens) {
+    //     std::cout << *t << "\n";
+    // }
 
     // Excluding EOF token
     if (!tokens.empty() && tokens[tokens.size() - 1]->type == TokenType::END_OF_FILE)
@@ -63,4 +63,6 @@ int main(int argc, char **argv) {
 
     parser.feed(TokenList(std::move(tokens)));
     parser.parse();
+    if (parser.releaseErrors())
+        return 4;
 }

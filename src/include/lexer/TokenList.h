@@ -33,9 +33,8 @@ public:
             return nullptr;
         return tokens_[pos_ + distance];
     }
-    inline void move() noexcept {
-        pos_++;
-    };
+    inline void move() noexcept { pos_++; };
+    inline size_t pos() const noexcept { return pos_; }
 private:
     void swap(TokenList& rhs) {
         tokens_.swap(rhs.tokens_);

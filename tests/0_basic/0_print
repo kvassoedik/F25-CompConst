@@ -1,4 +1,4 @@
-routine main(1) is
+routine main(a1:f) is
     print true
     print false
     print

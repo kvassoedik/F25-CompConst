@@ -12,12 +12,18 @@ void Parser::parse() {
     while (nextNode());
 }
 
+bool Parser::releaseErrors() {
+    return reporter_.reportAll();
+}
+
 bool Parser::nextNode() {
     auto&& tk = tokens_.get();
     if (!tk) return false;
+
+    startTk_ = std::move(tk);
     tokens_.move();
     
-    switch (tk->type) {
+    switch (startTk_->type) {
     case TokenType::Routine: {
         parseRoutine();
         break;
@@ -30,8 +36,12 @@ bool Parser::nextNode() {
     return true;
 }
 
-void Parser::saveError(std::string reason) {
-    std::cout << "ERROR: " << reason << "\n";
+void Parser::saveError(Tokens::Span span, std::string reason) {
+    reporter_.report({
+        .level = CompileMsg::Level::Error,
+        .message = std::move(reason),
+        .span = span,
+    });
 }
 
 std::shared_ptr<Ast::Decl> Parser::findDeclaration(const std::string& id) {
@@ -69,48 +79,71 @@ void Parser::parseRoutine() {
     if (!id || id->type != TokenType::Identifier) {
         std::stringstream ss;
         ss << "expected routine identifier, got ";
-        saveError(ss.str());
+        saveError(id->span, ss.str());
         return;
     }
     tokens_.move();
 
-    if (currBlock_->declMap.find(static_cast<Tokens::IdentifierTk*>(&*id)->identifier) != currBlock_->declMap.end()) {
-        std::stringstream ss;
-        ss << "redefinition of identifier "
-            << static_cast<Tokens::IdentifierTk*>(&*id)->identifier
-            << "\npreviously defined here: ";
-        saveError(ss.str());
-        return;
+    {
+        // Previously defined?
+        auto&& prevDef = currBlock_->declMap.find(static_cast<Tokens::IdentifierTk*>(&*id)->identifier);
+        if (prevDef != currBlock_->declMap.end()) {
+            std::stringstream ss;
+            ss << "redefinition of identifier "
+                << static_cast<Tokens::IdentifierTk*>(&*id)->identifier;
+            saveError(id->span, ss.str());
+
+            reporter_.report({
+                .level = CompileMsg::Level::Appendix,
+                .message = "previously defined here:",
+                .span = prevDef->second->span,
+            });
+            return;
+        }
     }
 
     auto&& routineDecl = std::make_shared<Ast::RoutineDecl>(static_cast<Tokens::IdentifierTk*>(&*id)->identifier);
     auto&& tk = tokens_.get();
     if (!tk || (tk->type != TokenType::BRACKET_OPEN && tk->type != TokenType::ROUTINE_ARROW)) {
-        saveError("expected '(' or '=>' after routine identifier");
+        saveError({
+            .line = tk->span.line,
+            .start = tk->span.start,
+            .end = tk->span.start+1,
+        }, "expected '(' or '=>' after routine identifier");
         return;
     }
     tokens_.move();
 
     if (tk->type == TokenType::BRACKET_OPEN) {
         // Parse params
-        while ((tk = tokens_.get()) != nullptr) {
-            if (tk->type == TokenType::BRACKET_CLOSE) {
-                break;
-            } else {
-                parseRoutineParam(routineDecl);
-                do {
-                    tokens_.move();
-                    if ((tk = tokens_.get()) == nullptr) break;
-                    if (tk->type == TokenType::COMMA) {
+        {
+            std::shared_ptr<Tokens::BaseTk> nextParamTk;
+            while ((nextParamTk = tokens_.get()) != nullptr) {
+                tk = std::move(nextParamTk);
+                if (tk->type == TokenType::BRACKET_CLOSE) {
+                    break;
+                } else {
+                    parseRoutineParam(routineDecl);
+                    while ((nextParamTk = tokens_.get()) != nullptr) {
+                        tk = std::move(nextParamTk);
+                        if (tk->type == TokenType::BRACKET_CLOSE)
+                            break;
+
                         tokens_.move();
-                        break;
+                        if (tk->type == TokenType::COMMA)
+                            break;
                     }
-                } while (tk->type != TokenType::BRACKET_CLOSE);
+                }
             }
         }
 
-        if ((tk = tokens_.get()) == nullptr || tk->type != TokenType::BRACKET_CLOSE) {
-            saveError("expected ')' after routine parameters");
+        auto&& bracket = tokens_.get();
+        if (!bracket || bracket->type != TokenType::BRACKET_CLOSE) {
+            saveError({
+                .line = tk->span.line,
+                .start = tk->span.end,
+                .end = tk->span.end + 1,
+            }, "expected ')' after routine parameters");
             return;
         }
         tokens_.move();
@@ -120,7 +153,11 @@ void Parser::parseRoutine() {
                 tokens_.move();
                 // TODO parse body
             } else if (tk->type != TokenType::ENDLINE || tk->type != TokenType::SEMICOLON) {
-                saveError("expected 'is' before routine definition");
+                saveError({
+                    .line = tk->span.line,
+                    .start = tk->span.start,
+                    .end = tk->span.start + 1,
+                }, "expected 'is' before routine body");
                 return;
             }
         }
@@ -137,23 +174,36 @@ void Parser::parseRoutineParam(std::shared_ptr<Ast::RoutineDecl>& parent) {
 
     auto&& id = tokens_.get();
     if (!id || id->type != TokenType::Identifier) {
-        saveError("expected parameter identifier");
+        saveError({
+            .line = id->span.line,
+            .start = id->span.start,
+            .end = id->span.start+1,
+        }, "expected parameter identifier");
         return;
     }
     tokens_.move();
     
     std::shared_ptr<Tokens::BaseTk> tk = tokens_.get();
-    if (tk->type != TokenType::COLON) {
-        saveError("expected ':' after parameter identifier");
+    if (!tk || tk->type != TokenType::COLON) {
+        saveError({
+            .line = tk->span.line,
+            .start = tk->span.start,
+            .end = tk->span.start+1,
+        }, "expected ':' after parameter identifier");
         return;
     }
     tokens_.move();
     
     auto&& type = parseType();
     if (!type) {
-        saveError("expected parameter type identifier");
+        saveError({
+            .line = tk->span.line,
+            .start = tk->span.start,
+            .end = tk->span.start+1,
+        }, "expected parameter type identifier");
         return;
     }
+    tokens_.move();
 
     parent->params.emplace_back(std::make_shared<Ast::VarDecl>(static_cast<Tokens::IdentifierTk*>(&*tk)->identifier, std::move(type)));
 }
@@ -162,6 +212,8 @@ std::shared_ptr<Ast::Type> Parser::parseType() {
     std::cout << "= Parsing type\n";
 
     auto&& tk = tokens_.get();
+    if (!tk)
+        return {nullptr};
     if (tk->type == TokenType::Identifier) {
         auto&& type = findNamedType(static_cast<Tokens::IdentifierTk*>(&*tk)->identifier);
         if (type)
