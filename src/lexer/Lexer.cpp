@@ -57,29 +57,9 @@ int Lexer::configure(int* argc, char** argv) {
     return 0;
 }
 
-bool Lexer::openFile(const char* fileName) {
-    auto file = std::make_unique<std::ifstream>();
-    file->open(fileName, std::ios::in);
-    if (!file->is_open()) return false;
-
-    pos_ = 0;
-    lineNum_ = 1;
-    currTkStart_ = 0;
-    lineStartPos_ = 0;
-    bits_.eof = false;
-    bits_.commentStarted = false;
-    bits_.commentMultiline = false;
-    file_.swap(file);
-    fileName_.append(fileName);
-    return true;
-}
-
 std::vector<std::shared_ptr<Tokens::BaseTk>> Lexer::scan() {
-    if (!file_)
-        throw std::runtime_error("No opened file.");
-
-    buf_.assign((std::istreambuf_iterator<char>(*file_)),
-            std::istreambuf_iterator<char>());
+    if (!file_->isOpen())
+        throw std::runtime_error("No opened file");
 
     std::vector<std::shared_ptr<Tokens::BaseTk>> tokens;
     LexerStatus st = LexerStatus::NONE; // LexerStatus does nothing. Could be for extensibility to Formatters, Intellisense
@@ -113,15 +93,15 @@ bool Lexer::releaseErrors() {
         char buf[56];
         int i = 0;
         for (pos_ = displayStart; i < 56; pos_ = displayStart + ++i) {
-            if (isEndline(buf_[pos_], false)) break;
-            buf[i] = buf_[pos_];
+            if (isEndline((*file_)[pos_], false)) break;
+            buf[i] = (*file_)[pos_];
         }
 
         buf[i] = '\0';
         bool lineTooLong = i == 56;
 
         unsigned long maxArrowsLen = 56 - (err.span.start - displayStart);
-        std::cout << ANSI_START ANSI_BOLD ANSI_APPLY << fileName_ << ":" << err.span.line << ":"
+        std::cout << ANSI_START ANSI_BOLD ANSI_APPLY << file_->fileName() << ":" << err.span.line << ":"
             << err.span.start - err.lineStart + 1 << ANSI_RESET << ": " // Display column right before the start of the erroneous token
             << ANSI_START ANSI_RED ANSI_AND ANSI_BOLD ANSI_APPLY "error" ANSI_RESET ": " << std::move(err.message) << "\n"
             << logger_.numberedWall(err.span.line) << buf << (lineTooLong ? "..." : "") << "\n"
@@ -225,7 +205,7 @@ std::shared_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
 
             if (!isDoubleDot) {
                 if (currTkLen() > 0) {
-                    if (isDigit(buf_[currTkStart_]) || buf_[currTkStart_] == '.') {
+                    if (isDigit((*file_)[currTkStart_]) || (*file_)[currTkStart_] == '.') {
                         // This is a real literal
                         // If the 1st char is also a dot, it's an ill form, but let it be processed by the getTokenFromWord()
                         move(1);
@@ -292,7 +272,7 @@ std::shared_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
 }
 
 std::shared_ptr<Tokens::BaseTk> Lexer::getTokenFromWord(LexerStatus& ret_st) {
-    std::string_view word(buf_.c_str() + currTkStart_, pos_ - currTkStart_);
+    std::string_view word(file_->c_str() + currTkStart_, pos_ - currTkStart_);
     if (word.empty())
         throw std::runtime_error("cannot lex an empty word");
     if (canLog(1)) std::cout << "Lexing word: " << word << "\n";
@@ -387,7 +367,7 @@ void Lexer::initToken(std::shared_ptr<Tokens::BaseTk>& tk) {
         tk->_str = "\\t";
         break;
     }
-    default: tk->_str = std::move(buf_.substr(tk->span.start, tk->span.end - tk->span.start));
+    default: tk->_str = std::move(file_->substr(tk->span.start, tk->span.end - tk->span.start));
     }
     #endif
 }
@@ -510,16 +490,16 @@ bool Lexer::isEndline(char c, bool doMove) {
 }
 
 bool Lexer::lookAhead(char &c) const noexcept {
-    if (pos_ + 1 > buf_.size())
+    if (pos_ + 1 >= file_->size())
         return false;
-    c = buf_[pos_ + 1];
+    c = (*file_)[pos_ + 1];
     return true;
 }
 
 bool Lexer::get(char &c) const noexcept {
-    if (pos_ >= buf_.size())
+    if (pos_ >= file_->size())
         return false;
-    c = buf_[pos_];
+    c = (*file_)[pos_];
     return true;
 }
 

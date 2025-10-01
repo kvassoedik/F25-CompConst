@@ -27,11 +27,12 @@ int main(int argc, char **argv) {
     }
     char* fileName = argv[argc - 1];
 
-    Lexer lexer;
-    if (!lexer.openFile(fileName)) {
+    auto&& file = std::make_shared<FileReader>(fileName);
+    if (!file->isOpen()) {
         std::cerr << "Could not open a file " << argv[1] << "\n";
         return 2;
     }
+    Lexer lexer(file);
     if (lexer.configure(&argc, argv) != 0)
         return 3;
 
@@ -51,10 +52,10 @@ int main(int argc, char **argv) {
         return 4;
     }
 
-    // std::cout << "======= TOKEN SEQUENCE =======\n";
-    // for (auto& t: tokens) {
-    //     std::cout << *t << "\n";
-    // }
+    std::cout << "======= TOKEN SEQUENCE =======\n";
+    for (auto& t: tokens) {
+        std::cout << *t << "\n";
+    }
 
     // Excluding EOF token
     if (!tokens.empty() && tokens[tokens.size() - 1]->type == TokenType::END_OF_FILE)

@@ -7,14 +7,15 @@
 #include "lexer/Token.h"
 #include "lexer/LexerStatus.h"
 #include "utils/Logger.h"
-#include <fstream>
+#include "FileReader.h"
 #include <vector>
-#include <memory>
 
 class Lexer {
 public:
+    Lexer(std::shared_ptr<FileReader> file)
+        : file_(std::move(file)) {}
+
     int configure(int* argc, char** argv);
-    bool openFile(const char* fileName);
     std::vector<std::shared_ptr<Tokens::BaseTk>> scan();
     bool releaseErrors();
 
@@ -43,19 +44,17 @@ private:
     };
 
     Logger logger_;
+    std::shared_ptr<FileReader> file_;
     std::vector<LexerError> errors_;
-    std::unique_ptr<std::ifstream> file_{nullptr};
-    std::string fileName_;
-    std::string buf_;
-    unsigned long pos_, lineNum_, lineStartPos_, currTkStart_;
+    unsigned long pos_{0}, lineNum_{1}, lineStartPos_{0}, currTkStart_{0};
 
     // Flags
     int logVerbosity_{0};
     //
 
     struct {
-        bool eof: 1;
-        bool commentStarted: 1;
-        bool commentMultiline: 1;
+        bool eof: 1 = false;
+        bool commentStarted: 1 = false;
+        bool commentMultiline: 1 = false;
     } bits_;
 };
