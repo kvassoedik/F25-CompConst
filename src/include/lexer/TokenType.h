@@ -52,6 +52,7 @@ enum class TokenType: unsigned int {
     And,
     Or,
     Xor,
+    Not,
     Array,
     Record,
     End,

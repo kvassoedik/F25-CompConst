@@ -29,6 +29,7 @@ static std::unordered_map<std::string_view, TokenType> KEYWORDS
     {"and", TokenType::And},
     {"or", TokenType::Or},
     {"xor", TokenType::Xor},
+    {"not", TokenType::Not},
     {"array", TokenType::Array},
     {"record", TokenType::Record},
     {"end", TokenType::End},
