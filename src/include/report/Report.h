@@ -55,7 +55,16 @@ public:
             ) << ANSI_RESET << "\n";
     }
 
-    
+    std::string substr(size_t start, size_t end, size_t maxSize = 10) {
+        end = end - start; // end is now size
+        bool tooLong = end > maxSize;
+        end = std::min(end, maxSize);
+
+        std::string s = file_->substr(start, end);
+        if (tooLong)
+            s += "...";
+        return s;
+    }
     
 private:
     class Logger {

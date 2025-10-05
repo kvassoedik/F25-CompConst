@@ -10,7 +10,9 @@
 class Parser final {
 public:
     Parser(std::shared_ptr<FileReader> file)
-        : file_(std::move(file)) {}
+        : file_(std::move(file)),
+        root_(std::make_shared<Ast::Block>(Tokens::Span{.line = 1, .start = 0, .end = file_->size()})),
+        currBlock_(root_) {}
 
     int configure(int* argc, char** argv);
     void feed(TokenList tokens);
@@ -22,17 +24,39 @@ private:
     std::shared_ptr<Ast::Decl> findDeclaration(const std::string& id);
     std::shared_ptr<Ast::Type> findNamedType(const std::string& id);
 
-    void parseBlock(std::shared_ptr<Ast::Block>& parent);
-    void parseRoutine();
-    void parseRoutineParam(std::shared_ptr<Ast::RoutineDecl>& parent);
+    std::shared_ptr<Ast::Block> parseBlock();
+    // No validation of 1st tk
+    std::shared_ptr<Ast::Routine> parseRoutine();
+    std::shared_ptr<Ast::VarDecl> parseRoutineParam();
+    std::shared_ptr<Ast::Var> parseVar();
 
+    // Guarantees non-nullptr
     std::shared_ptr<Ast::Type> parseType();
+
+    std::shared_ptr<Ast::Expr> parseExpr();
+    std::shared_ptr<Ast::Expr> parseRelation();
+    std::shared_ptr<Ast::Expr> parseSimple();
+    std::shared_ptr<Ast::Expr> parseFactor();
+    std::shared_ptr<Ast::Expr> parseSummand();
+    std::shared_ptr<Ast::Expr> parsePrimary();
+    std::shared_ptr<Ast::Expr> parseModifiablePrimary();
+
+    // No validation of 1st tk
+    std::shared_ptr<Ast::PrintStmt> parsePrintStmt();
+    // No validation of 1st tk
+    std::shared_ptr<Ast::IfStmt> parseIfStmt();
+    // No validation of 1st tk
+    std::shared_ptr<Ast::ForStmt> parseForStmt();
+    // No validation of 1st tk
+    std::shared_ptr<Ast::WhileStmt> parseWhileStmt();
+    
+    std::shared_ptr<Ast::RangeSpecifier> parseRangeSpecifier();
 private:
     TokenList tokens_;
     std::vector<std::string> savedErrors_;
-    std::shared_ptr<Ast::Block> root_ = std::make_shared<Ast::Block>();
-    std::shared_ptr<Ast::Block> currBlock_{root_};
     std::shared_ptr<FileReader> file_;
+    std::shared_ptr<Ast::Block> root_;
+    std::shared_ptr<Ast::Block> currBlock_;
     std::shared_ptr<Tokens::BaseTk> startTk_;
     Reporter reporter_{file_};
 };
