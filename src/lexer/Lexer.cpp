@@ -19,6 +19,7 @@ static std::unordered_map<std::string_view, TokenType> KEYWORDS
     {"is", TokenType::Is},
     {"print", TokenType::Print},
     {"var", TokenType::Var},
+    {"type", TokenType::Type},
     {"if", TokenType::If},
     {"then", TokenType::If},
     {"else", TokenType::Else},
