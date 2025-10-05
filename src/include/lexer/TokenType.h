@@ -43,6 +43,7 @@ enum class TokenType: unsigned int {
     Print,
     Var,
     If,
+    Then,
     Else,
     While,
     For,
