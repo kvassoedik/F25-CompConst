@@ -19,7 +19,7 @@ public:
     void parse();
     bool releaseErrors();
 private:
-    bool nextNode();
+    bool nextNode(std::shared_ptr<Ast::Block>& block);
     void saveError(Tokens::Span span, std::string reason);
     std::shared_ptr<Ast::Decl> findDeclaration(const std::string& id);
     std::shared_ptr<Ast::Type> findNamedType(const std::string& id);
@@ -27,8 +27,9 @@ private:
     std::shared_ptr<Ast::Block> parseBlock();
     // No validation of 1st tk
     std::shared_ptr<Ast::Routine> parseRoutine();
-    std::shared_ptr<Ast::VarDecl> parseRoutineParam();
-    std::shared_ptr<Ast::Var> parseVar();
+    std::shared_ptr<Ast::Var> parseRoutineParam();
+    std::shared_ptr<Ast::Var> parseVarDecl();
+    std::shared_ptr<Ast::TypeDecl> parseTypeDecl();
 
     // Guarantees non-nullptr
     std::shared_ptr<Ast::Type> parseType();
@@ -39,7 +40,7 @@ private:
     std::shared_ptr<Ast::Expr> parseFactor();
     std::shared_ptr<Ast::Expr> parseSummand();
     std::shared_ptr<Ast::Expr> parsePrimary();
-    std::shared_ptr<Ast::Expr> parseModifiablePrimary();
+    std::shared_ptr<Ast::ModifiablePrimary> parseModifiablePrimary();
 
     // No validation of 1st tk
     std::shared_ptr<Ast::PrintStmt> parsePrintStmt();
@@ -49,6 +50,8 @@ private:
     std::shared_ptr<Ast::ForStmt> parseForStmt();
     // No validation of 1st tk
     std::shared_ptr<Ast::WhileStmt> parseWhileStmt();
+    // No validation of 1st tk
+    std::shared_ptr<Ast::ReturnStmt> parseReturnStmt();
     
     std::shared_ptr<Ast::RangeSpecifier> parseRangeSpecifier();
 private:

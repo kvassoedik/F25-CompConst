@@ -26,7 +26,10 @@ namespace Ast {
         std::string id;
     };
 
-    struct Stmt : public Entity {};
+    struct Stmt : public Entity {
+        Stmt(Tokens::Span span)
+            : Entity(span) {}
+    };
     
     enum class TypeEnum {
         ERROR,
@@ -89,10 +92,18 @@ namespace Ast {
         Subtract,
         Multiply,
         Divide,
+        Modulo,
         And,
         Or,
         Xor,
         RoutineCall,
+
+        LESS_THAN,
+        LESS_OR_EQUAL,
+        MORE_THAN,
+        MORE_OR_EQUAL,
+        EQUAL,
+        UNEQUAL,
     };
 
     struct Expr : public Entity {
@@ -117,16 +128,16 @@ namespace Ast {
         std::shared_ptr<Expr> end;
     };
 
-    struct CompoundPrimary : public Expr {
-        CompoundPrimary(Tokens::Span span)
+    struct ModifiablePrimary : public Expr {
+        ModifiablePrimary(Tokens::Span span)
             : Expr(span) {}
 
-        std::shared_ptr<CompoundPrimary> next;
+        std::shared_ptr<ModifiablePrimary> next;
     };
     
-    struct IdRef : public CompoundPrimary {
+    struct IdRef : public ModifiablePrimary {
         IdRef(Tokens::Span span, std::string id)
-            : CompoundPrimary(span), id(std::move(id)) {
+            : ModifiablePrimary(span), id(std::move(id)) {
                 code = ExprEnum::IdRef;
             }
 
@@ -163,21 +174,33 @@ namespace Ast {
     /************************************ Statement ************************************/
 
     struct PrintStmt final : public Stmt {
+        PrintStmt(Tokens::Span span)
+            : Stmt(span) {}
+
         std::vector<std::shared_ptr<Expr>> args;
     };
 
     struct IfStmt final : public Stmt {
+        IfStmt(Tokens::Span span)
+            : Stmt(span) {}
+
         std::shared_ptr<Expr> condition;
         std::shared_ptr<Block> body;
         std::shared_ptr<Block> elseBody;
     };
     
     struct WhileStmt final : public Stmt {
+        WhileStmt(Tokens::Span span)
+            : Stmt(span) {}
+
         std::shared_ptr<Expr> condition;
         std::shared_ptr<Block> body;
     };
     
     struct ForStmt final : public Stmt {
+        ForStmt(Tokens::Span span)
+            : Stmt(span) {}
+
         std::string counterId;
         std::shared_ptr<RangeSpecifier> range;
         std::shared_ptr<Block> body;
@@ -185,80 +208,46 @@ namespace Ast {
     };
 
     struct ReturnStmt final : public Stmt {
+        ReturnStmt(Tokens::Span span)
+            : Stmt(span) {}
+
+        std::shared_ptr<Expr> val;
+    };
+
+    struct Assignment final : public Stmt {
+        Assignment(Tokens::Span span)
+            : Stmt(span) {}
+
+        std::shared_ptr<ModifiablePrimary> left;
         std::shared_ptr<Expr> val;
     };
 
     /************************************ Var ************************************/
 
-    struct VarDecl final : public Decl {
-        VarDecl(Tokens::Span span, std::string id, std::shared_ptr<Type> type)
-            : Decl(span, std::move(id)), type(std::move(type)) {}
+    struct Var final : public Decl {
+        Var(Tokens::Span span, std::string id)
+            : Decl(span, std::move(id)) {}
 
         std::shared_ptr<Type> type;
-
-        // void generate() override;
-        // bool validate() override;
-    };
-
-    struct Var final : public Entity {
-        Var(Tokens::Span span, VarDecl header, std::shared_ptr<Expr> val)
-            : Entity(span), header(header), val(val) {}
-
-        VarDecl header;
-        std::shared_ptr<Expr> val;
-    };
-
-    struct Literal : public Entity {
-        Literal(Tokens::Span span, TypeEnum code)
-            : Entity(span), code(code) {}
-
-        const TypeEnum code;
-    };
-    struct RealLiteral final : public Literal {
-        RealLiteral(Tokens::Span span)
-            : Literal(span, TypeEnum::Real) {}
-
-        double val;
-    };
-    struct IntLiteral final : public Literal {
-        IntLiteral(Tokens::Span span)
-            : Literal(span, TypeEnum::Int) {}
-
-        long val;
-    };
-    struct BoolLiteral final : public Literal {
-        BoolLiteral(Tokens::Span span)
-            : Literal(span, TypeEnum::Bool) {}
-
-        bool val;
+        std::shared_ptr<Expr> val{nullptr};
     };
 
     /************************************ Routine ************************************/
 
-    struct RoutineDecl final : public Decl {
-        RoutineDecl(Tokens::Span span, std::string id)
+    struct Routine final : public Decl {
+        Routine(Tokens::Span span, std::string id)
             : Decl(span, std::move(id)) {}
 
-        std::vector<std::shared_ptr<VarDecl>> params;
+        std::vector<std::shared_ptr<Var>> params;
         std::shared_ptr<Type> retType;
-
-        // void generate() override;
-        // bool validate() override;
-    };
-
-    struct Routine final : public Entity {
-        Routine(Tokens::Span span)
-            : Entity(span) {}
-
-        std::shared_ptr<RoutineDecl> header;
         std::shared_ptr<Block> body;
     };
 
     struct RoutineCall final : public Expr {
-        RoutineCall(Tokens::Span span, std::shared_ptr<CompoundPrimary> routineId)
+        RoutineCall(Tokens::Span span, std::shared_ptr<ModifiablePrimary> routineId)
             : Expr(span, ExprEnum::RoutineCall), routineId(std::move(routineId)) {}
 
-        std::shared_ptr<CompoundPrimary> routineId;
+        std::shared_ptr<ModifiablePrimary> routineId;
         std::vector<std::shared_ptr<Expr>> args;
     };
 
@@ -272,9 +261,9 @@ namespace Ast {
         std::shared_ptr<Type> elemType;
     };
 
-    struct ArrayAccess final : public CompoundPrimary {
+    struct ArrayAccess final : public ModifiablePrimary {
         ArrayAccess(Tokens::Span span, std::shared_ptr<Expr> val)
-            : CompoundPrimary(span), val(std::move(val)) {
+            : ModifiablePrimary(span), val(std::move(val)) {
                 code = ExprEnum::ArrayAccess;
             }
 

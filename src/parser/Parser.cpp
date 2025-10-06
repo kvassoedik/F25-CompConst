@@ -3,6 +3,9 @@
 #include <sstream>
 
 #define ID_STR(tk) static_cast<Tokens::IdentifierTk*>(&*tk)->identifier
+#define DEBUG_HINT(str) std::cout \
+    << "= Parsing " << ANSI_START ANSI_BOLD ANSI_APPLY << str << ANSI_RESET" " \
+    << file_->fileName() << ":" << tk->span.line << ":" << tk->span.start - file_->lineStarts[tk->span.line-1] + 1 << "\n"
 
 int Parser::configure(int* argc, char** argv) {
     return 0;
@@ -11,7 +14,7 @@ int Parser::configure(int* argc, char** argv) {
 void Parser::feed(TokenList tokens) { tokens_ = std::move(tokens); }
 
 void Parser::parse() {
-    while (nextNode());
+    while (nextNode(currBlock_));
 }
 
 bool Parser::releaseErrors() {
@@ -20,23 +23,94 @@ bool Parser::releaseErrors() {
 
 /*******************************************************************************************************************/
 
-bool Parser::nextNode() {
+bool Parser::nextNode(std::shared_ptr<Ast::Block>& block) {
     auto&& tk = tokens_.get();
     if (!tk) return false;
-
-    startTk_ = std::move(tk);
-    tokens_.move();
     
-    switch (startTk_->type) {
-    case TokenType::Routine: {
-        auto&& node = parseRoutine();
+    switch (tk->type) {
+    case TokenType::Var: {
+        auto&& node = parseVarDecl();
         if (node) {
-            currBlock_->declarations.emplace_back(node);
-            currBlock_->declMap.emplace(node->header.id, std::move(node->header));
+            block->declarations.emplace_back(node);
+            block->declMap.emplace(node->id, std::move(node));
         }
         break;
     }
-    
+    case TokenType::Routine: {
+        auto&& node = parseRoutine();
+        if (node) {
+            block->declarations.emplace_back(node);
+            block->declMap.emplace(node->id, std::move(node));
+        }
+        break;
+    }
+    case TokenType::Type: {
+        auto&& node = parseTypeDecl();
+        if (node) {
+            block->typeMap.emplace(node->id, node->type);
+        }
+        break;
+    }
+    case TokenType::Print: {
+        auto&& node = parsePrintStmt();
+        if (node) {
+            block->statements.emplace_back(std::move(node));
+        }
+        break;
+    }
+    case TokenType::If: {
+        auto&& node = parseIfStmt();
+        if (node) {
+            block->statements.emplace_back(std::move(node));
+        }
+        break;
+    }
+    case TokenType::For: {
+        auto&& node = parseForStmt();
+        if (node) {
+            block->statements.emplace_back(std::move(node));
+        }
+        break;
+    }
+    case TokenType::While: {
+        auto&& node = parseWhileStmt();
+        if (node) {
+            block->statements.emplace_back(std::move(node));
+        }
+        break;
+    }
+    case TokenType::Identifier: {
+        auto&& node = parseModifiablePrimary();
+        if (node) {
+            tk = tokens_.get();
+            if (!tk || tk->type != TokenType::ASSIGNMENT) {
+                // err, rogue statement
+                break;
+            }
+
+            auto&& res = std::make_shared<Ast::Assignment>(node->span);
+            res->left = std::move(node);
+            auto&& expr = parseExpr();
+            if (expr) {
+                res->span.end = expr->span.end;
+                res->val = std::move(expr);
+                block->statements.emplace_back(std::move(res));
+            } else {
+                // err
+            }
+
+        }
+        break;
+    }
+    case TokenType::ENDLINE:
+    case TokenType::SEMICOLON: {
+        tokens_.move();
+        break;
+    }
+    default: {
+        tokens_.move();
+        saveError(tk->span, "invalid statement");
+    }
     }
 
     return true;
@@ -75,17 +149,30 @@ std::shared_ptr<Ast::Type> Parser::findNamedType(const std::string& id) {
 }
 
 std::shared_ptr<Ast::Block> Parser::parseBlock() {
-    return nullptr;
+    auto&& res = std::make_shared<Ast::Block>(Tokens::Span{0, 0, 0});
+    res->parent = currBlock_;
+    currBlock_ = res;
+
+    while (true) {
+        auto&& tk = tokens_.get();
+        if (!tk || tk->type == TokenType::End || tk->type == TokenType::Else)
+            break;
+        if (!nextNode(res))
+            break;
+    }
+
+    currBlock_ = currBlock_->parent;
+    return res;
 }
 
 std::shared_ptr<Ast::Routine> Parser::parseRoutine() {
-    std::cout << "= Parsing routine\n";
+    auto&& tk = tokens_.get();
+    DEBUG_HINT("routine");
 
-    auto&& id = tokens_.get();
+    // skipping over 'routine' keyword immediately
+    auto&& id = tokens_.moveGet();
     if (!id || id->type != TokenType::Identifier) {
-        std::stringstream ss;
-        ss << "expected routine identifier, got ";
-        saveError(id->span, ss.str());
+        saveError(id->span, "expected routine identifier");
         return nullptr;
     }
     tokens_.move();
@@ -107,113 +194,126 @@ std::shared_ptr<Ast::Routine> Parser::parseRoutine() {
         }
     }
 
-    auto&& res = std::make_shared<Ast::Routine>(id->span);
-    auto&& routineDecl = std::make_shared<Ast::RoutineDecl>(id->span, ID_STR(id));
+    auto&& res = std::make_shared<Ast::Routine>(tk->span, ID_STR(id));
     std::shared_ptr<Ast::Block> body;
 
-    auto&& tk = tokens_.get();
-    if (!tk || (tk->type != TokenType::BRACKET_OPEN && tk->type != TokenType::ROUTINE_ARROW)) {
+    tk = tokens_.get();
+    if (!tk || tk->type != TokenType::BRACKET_OPEN) {
         saveError({
             .line = tk->span.line,
             .start = tk->span.start,
             .end = tk->span.start+1,
-        }, "expected '(' or '=>' after routine identifier");
+        }, "expected '(' after routine identifier");
         return nullptr;
     }
     tokens_.move();
 
-    if (tk->type == TokenType::BRACKET_OPEN) {
-        // Parse params
-        {
-            std::shared_ptr<Tokens::BaseTk> nextParamTk;
-            while ((nextParamTk = tokens_.get()) != nullptr) {
-                tk = std::move(nextParamTk);
-                if (tk->type == TokenType::BRACKET_CLOSE) {
-                    break;
-                } else {
-                    tokens_.move();
-                    auto&& param = parseRoutineParam();
-                    
-                    while ((nextParamTk = tokens_.get()) != nullptr) {
-                        tk = std::move(nextParamTk);
-                        if (tk->type == TokenType::BRACKET_CLOSE)
-                            break;
+    // Parse params
+    {
+        std::shared_ptr<Tokens::BaseTk> nextParamTk;
+        while ((nextParamTk = tokens_.get()) != nullptr) {
+            tk = std::move(nextParamTk);
+            if (tk->type == TokenType::BRACKET_CLOSE) {
+                break;
+            } else {
+                auto&& param = parseRoutineParam();
+                if (param)
+                    res->params.emplace_back(std::move(param));
+                
+                while ((nextParamTk = tokens_.get()) != nullptr) {
+                    tk = std::move(nextParamTk);
+                    if (tk->type == TokenType::BRACKET_CLOSE)
+                        break;
 
-                        tokens_.move();
-                        if (tk->type == TokenType::COMMA)
-                            break;
-                    }
+                    tokens_.move();
+                    if (tk->type == TokenType::COMMA)
+                        break;
                 }
             }
         }
-
-        auto&& bracket = tokens_.get();
-        if (!bracket || bracket->type != TokenType::BRACKET_CLOSE) {
-            saveError({
-                .line = tk->span.line,
-                .start = tk->span.end,
-                .end = tk->span.end + 1,
-            }, "expected ')' after routine parameters");
-            return nullptr;
-        }
-
-        if ((tk = tokens_.moveGet()) != nullptr) {
-            if (tk->type == TokenType::Is) {
-                tokens_.move();
-                // TODO parse body
-            } else if (tk->type != TokenType::ENDLINE || tk->type != TokenType::SEMICOLON) {
-                saveError({
-                    .line = tk->span.line,
-                    .start = tk->span.start,
-                    .end = tk->span.start + 1,
-                }, "expected 'is' before routine body");
-                return nullptr;
-            }
-        }
-    } else {
-        // TODO =>
     }
 
-    res->header = std::move(routineDecl);
+    auto&& bracket = tokens_.get();
+    if (!bracket || bracket->type != TokenType::BRACKET_CLOSE) {
+        saveError({
+            .line = tk->span.line,
+            .start = tk->span.end,
+            .end = tk->span.end + 1,
+        }, "expected ')' after routine parameters");
+        return nullptr;
+    }
+    res->span.end = bracket->span.end;
+
+    tk = tokens_.moveGet();
+    if (tk && tk->type == TokenType::COLON) {
+        tokens_.move();
+        auto&& returnType = parseType();
+        res->retType = returnType;
+        res->span.end = tk->span.end;
+    }
+
+    if ((tk = tokens_.get()) != nullptr) {
+        if (tk->type == TokenType::Is) {
+            tokens_.move();
+            body = parseBlock();
+
+            tk = tokens_.get();
+            if (!tk || tk->type != TokenType::End) {
+                // err
+                return nullptr;
+            }
+            tokens_.move();
+        } else if (tk->type == TokenType::ROUTINE_ARROW) {
+            tokens_.move();
+            body = parseBlock();
+        } else if (tk->type != TokenType::ENDLINE || tk->type != TokenType::SEMICOLON) {
+            saveError({
+                .line = tk->span.line,
+                .start = tk->span.start,
+                .end = tk->span.start + 1,
+            }, "expected 'is' before routine body");
+            return nullptr;
+        }
+    }
+
+    if (body)
+        res->span.end = body->span.end;
     res->body = std::move(body);
     return res;
 }
 
-std::shared_ptr<Ast::VarDecl> Parser::parseRoutineParam() {
-    std::cout << "= Parsing param\n";
-
-    auto&& id = tokens_.get();
-    if (!id || id->type != TokenType::Identifier) {
+std::shared_ptr<Ast::Var> Parser::parseRoutineParam() {
+    auto&& tk = tokens_.get();
+    if (!tk || tk->type != TokenType::Identifier) {
         saveError(
-            id ? id->span : Tokens::Span{file_->lineStarts.back(), file_->size(), file_->size()},
+            tk ? tk->span : Tokens::Span{file_->lineStarts.back(), file_->size(), file_->size()},
             "expected parameter identifier"
         );
         return nullptr;
     }
     
-    std::shared_ptr<Tokens::BaseTk> tk = tokens_.moveGet();
-    if (!tk || tk->type != TokenType::COLON) {
+    DEBUG_HINT("param");
+
+    auto&& res = std::make_shared<Ast::Var>(tk->span, ID_STR(tk));
+
+    auto&& colon = tokens_.moveGet();
+    if (!colon || colon->type != TokenType::COLON) {
         saveError({
-            .line = tk ? tk->span.line : id->span.line,
-            .start = tk ? tk->span.start : id->span.end,
-            .end = tk ? tk->span.end : id->span.end+1,
+            .line = colon ? colon->span.line : tk->span.line,
+            .start = colon ? colon->span.start : tk->span.end,
+            .end = colon ? colon->span.end : tk->span.end+1,
         }, "expected ':' after parameter identifier");
         return nullptr;
     }
 
     tokens_.move();
     auto&& type = parseType();
+    res->type = std::move(type);
 
-    return std::make_shared<Ast::VarDecl>(
-        Tokens::Span{id->span.start, id->span.start, type->span.end},
-        ID_STR(id),
-        std::move(type)
-    );
+    return res;
 }
 
 std::shared_ptr<Ast::Type> Parser::parseType() {
-    std::cout << "= Parsing type\n";
-
     auto&& tk = tokens_.get();
     if (!tk)
         return std::make_shared<Ast::Type>(
@@ -221,11 +321,13 @@ std::shared_ptr<Ast::Type> Parser::parseType() {
             Ast::TypeEnum::ERROR
         );
 
+    DEBUG_HINT("type");
+
     switch (tk->type)
     {
-    case TokenType::IntegerType: return {nullptr, std::make_shared<Ast::Type>(tk->span, Ast::TypeEnum::Int)};
-    case TokenType::RealType: return {nullptr, std::make_shared<Ast::Type>(tk->span, Ast::TypeEnum::Real)};
-    case TokenType::BooleanType: return {nullptr, std::make_shared<Ast::Type>(tk->span, Ast::TypeEnum::Bool)};
+    case TokenType::IntegerType: return std::make_shared<Ast::Type>(tk->span, Ast::TypeEnum::Int);
+    case TokenType::RealType: return std::make_shared<Ast::Type>(tk->span, Ast::TypeEnum::Real);
+    case TokenType::BooleanType: return std::make_shared<Ast::Type>(tk->span, Ast::TypeEnum::Bool);
     case TokenType::Identifier: return std::make_shared<Ast::TypeRef>(tk->span, ID_STR(tk));
     case TokenType::Array: {
         auto&& bracketOpen = tokens_.moveGet();
@@ -289,7 +391,7 @@ std::shared_ptr<Ast::Type> Parser::parseType() {
                 return res;
             }
 
-            auto&& var = parseVar();
+            auto&& var = parseVarDecl();
             if (var)
                 res->members.emplace_back(std::move(var));
 
@@ -305,11 +407,11 @@ std::shared_ptr<Ast::Type> Parser::parseType() {
         );
     }
     }
-    
+
     return std::make_shared<Ast::Type>(tk->span, Ast::TypeEnum::ERROR);
 }
 
-std::shared_ptr<Ast::Var> Parser::parseVar() {
+std::shared_ptr<Ast::Var> Parser::parseVarDecl() {
     auto&& tk = tokens_.get();
     if (!tk)
         return nullptr;
@@ -320,12 +422,12 @@ std::shared_ptr<Ast::Var> Parser::parseVar() {
     }
 
     auto&& id = tokens_.moveGet();
-    if (!id || tk->type != TokenType::Identifier) {
+    if (!id || id->type != TokenType::Identifier) {
         // err
         return nullptr;
     }
 
-    Tokens::Span headerSpan{.line = tk->span.line, .start = tk->span.start, .end = id->span.end};
+    Tokens::Span headerSpan{tk->span.line, tk->span.start, id->span.end};
     std::shared_ptr<Ast::Type> explicitType{nullptr};
 
     auto&& colon = tokens_.moveGet();
@@ -335,30 +437,31 @@ std::shared_ptr<Ast::Var> Parser::parseVar() {
         headerSpan.end = explicitType->span.end;
     }
 
-    auto&& is = tokens_.moveGet();
+    auto&& res = std::make_shared<Ast::Var>(headerSpan, ID_STR(id));
+
+    auto&& is = tokens_.get();
     if (!is || is->type != TokenType::Is) {
         if (!explicitType) {
             // err
             return nullptr;
         }
 
-        return std::make_shared<Ast::Var>(
-            headerSpan,
-            std::make_shared<Ast::VarDecl>(headerSpan, ID_STR(id), explicitType),
-            nullptr
-        );
+        res->type = explicitType;
+        return res;
     }
 
+    tokens_.move();
     auto&& expr = parseExpr();
-    return std::make_shared<Ast::Var>(
-        Tokens::Span{headerSpan.line, headerSpan.start, expr ? expr->span.end : headerSpan.end},
-        std::make_shared<Ast::VarDecl>(
-            headerSpan,
-            ID_STR(id),
-            explicitType || (expr ? expr->type : std::make_shared<Ast::Type>(headerSpan, Ast::TypeEnum::ERROR))
-        ),
-        expr
-    );
+    res->val = expr;
+    res->type = explicitType
+        ? explicitType
+        : (expr ? expr->type : std::make_shared<Ast::Type>(headerSpan, Ast::TypeEnum::ERROR));
+
+    return res;
+}
+
+std::shared_ptr<Ast::TypeDecl> Parser::parseTypeDecl() {
+    return nullptr;
 }
 
 /*******************************************************************************************************************/
@@ -382,7 +485,14 @@ std::shared_ptr<Ast::Expr> Parser::parseExpr() {
             break;
         }
 
-        auto&& expr = std::make_shared<Ast::ExprOperation>(Tokens::Span{left->span.line, left->span.start, right->span.end});
+        Ast::ExprEnum code;
+        switch (tk->type)
+        {
+        case TokenType::And: {code = Ast::ExprEnum::And; break;}
+        case TokenType::Or: {code = Ast::ExprEnum::Or; break;}
+        case TokenType::Xor: {code = Ast::ExprEnum::Xor; break;}
+        }
+        auto&& expr = std::make_shared<Ast::ExprOperation>(Tokens::Span{left->span.line, left->span.start, right->span.end}, code);
         expr->left = std::move(left);
         expr->right = std::move(right);
         left = std::move(expr);
@@ -409,7 +519,17 @@ std::shared_ptr<Ast::Expr> Parser::parseRelation() {
             break;
         }
 
-        auto&& relation = std::make_shared<Ast::ExprOperation>(Tokens::Span{left->span.line, left->span.start, right->span.end});
+        Ast::ExprEnum code;
+        switch (tk->type)
+        {
+        case TokenType::LESS_THAN: {code = Ast::ExprEnum::LESS_THAN; break;}
+        case TokenType::LESS_OR_EQUAL: {code = Ast::ExprEnum::LESS_OR_EQUAL; break;}
+        case TokenType::MORE_THAN: {code = Ast::ExprEnum::MORE_THAN; break;}
+        case TokenType::MORE_OR_EQUAL: {code = Ast::ExprEnum::MORE_OR_EQUAL; break;}
+        case TokenType::EQUAL: {code = Ast::ExprEnum::EQUAL; break;}
+        case TokenType::UNEQUAL: {code = Ast::ExprEnum::UNEQUAL; break;}
+        }
+        auto&& relation = std::make_shared<Ast::ExprOperation>(Tokens::Span{left->span.line, left->span.start, right->span.end}, code);
         relation->left = std::move(left);
         relation->right = std::move(right);
         left = std::move(relation);
@@ -434,7 +554,14 @@ std::shared_ptr<Ast::Expr> Parser::parseSimple() {
             break;
         }
 
-        auto&& simple = std::make_shared<Ast::ExprOperation>(Tokens::Span{left->span.line, left->span.start, right->span.end});
+        Ast::ExprEnum code;
+        switch (tk->type)
+        {
+        case TokenType::TIMES: {code = Ast::ExprEnum::Multiply; break;}
+        case TokenType::DIVIDE: {code = Ast::ExprEnum::Divide; break;}
+        case TokenType::MODULO: {code = Ast::ExprEnum::Modulo; break;}
+        }
+        auto&& simple = std::make_shared<Ast::ExprOperation>(Tokens::Span{left->span.line, left->span.start, right->span.end}, code);
         simple->left = std::move(left);
         simple->right = std::move(right);
         left = std::move(simple);
@@ -459,7 +586,13 @@ std::shared_ptr<Ast::Expr> Parser::parseFactor() {
             break;
         }
 
-        auto&& factor = std::make_shared<Ast::ExprOperation>(Tokens::Span{left->span.line, left->span.start, right->span.end});
+        Ast::ExprEnum code;
+        switch (tk->type)
+        {
+        case TokenType::PLUS: {code = Ast::ExprEnum::Add; break;}
+        case TokenType::MINUS: {code = Ast::ExprEnum::Subtract; break;}
+        }
+        auto&& factor = std::make_shared<Ast::ExprOperation>(Tokens::Span{left->span.line, left->span.start, right->span.end}, code);
         factor->left = std::move(left);
         factor->right = std::move(right);
         left = std::move(factor);
@@ -598,7 +731,7 @@ std::shared_ptr<Ast::Expr> Parser::parsePrimary() {
     return nullptr;
 }
 
-std::shared_ptr<Ast::Expr> Parser::parseModifiablePrimary() {
+std::shared_ptr<Ast::ModifiablePrimary> Parser::parseModifiablePrimary() {
     auto&& id = tokens_.get();
     if (!id || id->type != TokenType::Identifier) {
         // err
@@ -606,7 +739,7 @@ std::shared_ptr<Ast::Expr> Parser::parseModifiablePrimary() {
     }
 
     auto&& res = std::make_shared<Ast::IdRef>(id->span, ID_STR(id));
-    std::shared_ptr<Ast::CompoundPrimary> head = res;
+    std::shared_ptr<Ast::ModifiablePrimary> head = res;
 
     std::shared_ptr<Tokens::BaseTk> tk;
     while (true) {
@@ -631,7 +764,7 @@ std::shared_ptr<Ast::Expr> Parser::parseModifiablePrimary() {
             tokens_.move();
             
             auto&& expr = parseExpr();
-            auto&& node = std::make_shared<Ast::ArrayAccess>(std::move(expr));
+            auto&& node = std::make_shared<Ast::ArrayAccess>(Tokens::Span{tk->span.line, tk->span.start, expr->span.end}, std::move(expr));
             head->next = node;
             head = std::move(node);
         } else
@@ -646,18 +779,17 @@ std::shared_ptr<Ast::Expr> Parser::parseModifiablePrimary() {
 /*******************************************************************************************************************/
 
 std::shared_ptr<Ast::PrintStmt> Parser::parsePrintStmt() {
-    std::cout << "= Parsing print\n";
-
     auto&& tk = tokens_.get();
+    DEBUG_HINT("print");
+
     auto&& res = std::make_shared<Ast::PrintStmt>(tk->span);
     std::shared_ptr<Ast::Expr> lastExpr{nullptr};
 
-    do {
-        tk = tokens_.moveGet();
-        tokens_.move();
-        if (!tk || tk->type == TokenType::ENDLINE || tk->type == TokenType::SEMICOLON)
-            break;
+    tk = tokens_.moveGet();
+    if (!tk || tk->type == TokenType::ENDLINE || tk->type == TokenType::SEMICOLON)
+        return res;
 
+    do {
         auto&& nextExpr = parseExpr();
         if (!nextExpr) {
             // err
@@ -666,11 +798,15 @@ std::shared_ptr<Ast::PrintStmt> Parser::parsePrintStmt() {
         lastExpr = std::move(nextExpr);
         res->args.emplace_back(lastExpr);
 
-        auto&& comma = tokens_.get();
-        if (!comma || comma->type != TokenType::COMMA) {
+        tk = tokens_.get();
+        if (!tk || tk->type == TokenType::ENDLINE || tk->type == TokenType::SEMICOLON)
+            break;
+
+        if (tk->type != TokenType::COMMA) {
             // err
             break;
         }
+        tokens_.move();
     } while (true);
 
     if (lastExpr)
@@ -707,6 +843,7 @@ std::shared_ptr<Ast::IfStmt> Parser::parseIfStmt() {
         auto&& body = parseBlock();
         res->elseBody = std::move(body);
     }
+
     tk = tokens_.get();
     if (!tk || tk->type != TokenType::End) {
         // err
@@ -818,4 +955,57 @@ std::shared_ptr<Ast::RangeSpecifier> Parser::parseRangeSpecifier() {
         std::move(start),
         std::move(end)
     );
+}
+
+std::shared_ptr<Ast::WhileStmt> Parser::parseWhileStmt() {
+    std::cout << "= Parsing while\n";
+
+    auto&& tk = tokens_.get();
+    auto&& res = std::make_shared<Ast::WhileStmt>(tk->span);
+    tokens_.move();
+
+    auto&& expr = parseExpr();
+    if (!expr) {
+        // err
+        return nullptr;
+    }
+
+    tk = tokens_.get();
+    if (!tk || tk->type != TokenType::Loop) {
+        // err
+        return nullptr;
+    }
+
+    tokens_.move();
+    auto&& body = parseBlock();
+    if (!body) {
+        // err
+        return nullptr;
+    }
+
+    tk = tokens_.get();
+    if (!tk || tk->type != TokenType::End) {
+        // err
+        return nullptr;
+    }
+
+    res->span.end = tk->span.end;
+    res->condition = std::move(expr);
+    res->body = std::move(body);
+    return res;
+}
+
+std::shared_ptr<Ast::ReturnStmt> Parser::parseReturnStmt() {
+    auto&& tk = tokens_.get();
+    auto&& res = std::make_shared<Ast::ReturnStmt>(tk->span);
+    tokens_.move();
+
+    auto&& expr = parseExpr();
+    if (!expr) {
+        // err
+        return nullptr;
+    }
+
+    res->val = std::move(expr);
+    return res;
 }
