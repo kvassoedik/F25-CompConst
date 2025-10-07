@@ -17,10 +17,10 @@ public:
     int configure(int* argc, char** argv);
     void feed(TokenList tokens);
     void parse();
-    bool releaseErrors();
+    bool hasErrors() const;
 private:
     bool nextNode(std::shared_ptr<Ast::Block>& block);
-    void saveError(Tokens::Span span, std::string reason);
+    void saveError(std::string reason, Tokens::Span span);
     std::shared_ptr<Ast::Decl> findDeclaration(const std::string& id);
     std::shared_ptr<Ast::Type> findNamedType(const std::string& id);
 

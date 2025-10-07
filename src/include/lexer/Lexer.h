@@ -16,7 +16,7 @@ public:
 
     int configure(int* argc, char** argv);
     std::vector<std::shared_ptr<Tokens::BaseTk>> scan();
-    bool releaseErrors();
+    bool hasErrors() const;
 
     static bool isDigit(char c) { return (c > 47 && c < 58);}
     static bool isLetter(char c) { return ((c > 64 && c < 91) || (c > 96 && c < 123) || c == 95);}

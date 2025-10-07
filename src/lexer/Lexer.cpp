@@ -86,8 +86,8 @@ std::vector<std::shared_ptr<Tokens::BaseTk>> Lexer::scan() {
     return tokens;
 }
 
-bool Lexer::releaseErrors() {
-    return reporter_.reportAll();
+bool Lexer::hasErrors() const {
+    return reporter_.hasErrors();
 }
 
 std::shared_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {

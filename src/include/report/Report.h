@@ -14,21 +14,16 @@ public:
         msgs_.emplace_back(std::move(msg));
     }
 
-    bool reportAll() {
-        bool hasErrors = false;
-        for (auto& msg: msgs_) {
-            if (msg.level == CompileMsg::Level::Error)
-                hasErrors = true;
-
-            report(msg);
-        }
-
-        return hasErrors;
+    bool hasErrors() const {
+        return hasErrors_;
     }
 
     void report(const CompileMsg& msg) {
         unsigned long lineStart = file_->lineStarts[msg.span.line-1];
         unsigned long displayStart = ((msg.span.start < 16 || lineStart + 16 > msg.span.start) ? lineStart: msg.span.start - 16);
+
+        if (msg.level == CompileMsg::Level::Error)
+            hasErrors_ = true;
 
         char sourceText[56];
         int i = 0;
@@ -88,4 +83,5 @@ private:
 
     std::shared_ptr<FileReader> file_;
     std::vector<CompileMsg> msgs_;
+    bool hasErrors_{false};
 };

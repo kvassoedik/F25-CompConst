@@ -17,8 +17,8 @@ void Parser::parse() {
     while (nextNode(currBlock_));
 }
 
-bool Parser::releaseErrors() {
-    return reporter_.reportAll();
+bool Parser::hasErrors() const {
+    return reporter_.hasErrors();
 }
 
 /*******************************************************************************************************************/
@@ -109,14 +109,14 @@ bool Parser::nextNode(std::shared_ptr<Ast::Block>& block) {
     }
     default: {
         tokens_.move();
-        saveError(tk->span, "invalid statement");
+        saveError("invalid statement", tk->span);
     }
     }
 
     return true;
 }
 
-void Parser::saveError(Tokens::Span span, std::string reason) {
+void Parser::saveError(std::string reason, Tokens::Span span) {
     reporter_.report({
         .level = CompileMsg::Level::Error,
         .message = std::move(reason),
@@ -172,7 +172,7 @@ std::shared_ptr<Ast::Routine> Parser::parseRoutine() {
     // skipping over 'routine' keyword immediately
     auto&& id = tokens_.moveGet();
     if (!id || id->type != TokenType::Identifier) {
-        saveError(id->span, "expected routine identifier");
+        saveError("expected routine identifier", id->span);
         return nullptr;
     }
     tokens_.move();
@@ -181,10 +181,7 @@ std::shared_ptr<Ast::Routine> Parser::parseRoutine() {
         // Previously defined?
         auto&& prevDef = currBlock_->declMap.find(ID_STR(id));
         if (prevDef != currBlock_->declMap.end()) {
-            std::stringstream ss;
-            ss << "redefinition of identifier " << ID_STR(id);
-            saveError(id->span, ss.str());
-
+            saveError("redefinition of identifier " + ID_STR(id), id->span);
             reporter_.report({
                 .level = CompileMsg::Level::Appendix,
                 .message = "previously defined here:",
@@ -199,11 +196,10 @@ std::shared_ptr<Ast::Routine> Parser::parseRoutine() {
 
     tk = tokens_.get();
     if (!tk || tk->type != TokenType::BRACKET_OPEN) {
-        saveError({
-            .line = tk->span.line,
-            .start = tk->span.start,
-            .end = tk->span.start+1,
-        }, "expected '(' after routine identifier");
+        saveError(
+            "expected '(' after routine identifier",
+            {tk->span.line, tk->span.start, tk->span.start+1}
+        );
         return nullptr;
     }
     tokens_.move();
@@ -235,11 +231,10 @@ std::shared_ptr<Ast::Routine> Parser::parseRoutine() {
 
     auto&& bracket = tokens_.get();
     if (!bracket || bracket->type != TokenType::BRACKET_CLOSE) {
-        saveError({
-            .line = tk->span.line,
-            .start = tk->span.end,
-            .end = tk->span.end + 1,
-        }, "expected ')' after routine parameters");
+        saveError(
+            "expected ')' after routine parameters",
+            {tk->span.line, tk->span.end, tk->span.end + 1}
+        );
         return nullptr;
     }
     res->span.end = bracket->span.end;
@@ -267,11 +262,10 @@ std::shared_ptr<Ast::Routine> Parser::parseRoutine() {
             tokens_.move();
             body = parseBlock();
         } else if (tk->type != TokenType::ENDLINE || tk->type != TokenType::SEMICOLON) {
-            saveError({
-                .line = tk->span.line,
-                .start = tk->span.start,
-                .end = tk->span.start + 1,
-            }, "expected 'is' before routine body");
+            saveError(
+                "expected 'is' before routine body",
+                {tk->span.line, tk->span.start, tk->span.start + 1}
+            );
             return nullptr;
         }
     }
@@ -286,8 +280,8 @@ std::shared_ptr<Ast::Var> Parser::parseRoutineParam() {
     auto&& tk = tokens_.get();
     if (!tk || tk->type != TokenType::Identifier) {
         saveError(
-            tk ? tk->span : Tokens::Span{file_->lineStarts.back(), file_->size(), file_->size()},
-            "expected parameter identifier"
+            "expected parameter identifier",
+            tk ? tk->span : Tokens::Span{file_->lineStarts.back(), file_->size(), file_->size()}
         );
         return nullptr;
     }
@@ -298,11 +292,10 @@ std::shared_ptr<Ast::Var> Parser::parseRoutineParam() {
 
     auto&& colon = tokens_.moveGet();
     if (!colon || colon->type != TokenType::COLON) {
-        saveError({
-            .line = colon ? colon->span.line : tk->span.line,
-            .start = colon ? colon->span.start : tk->span.end,
-            .end = colon ? colon->span.end : tk->span.end+1,
-        }, "expected ':' after parameter identifier");
+        saveError(
+            "expected ':' after parameter identifier",
+            {colon ? colon->span.line : tk->span.line, colon ? colon->span.start : tk->span.end, colon ? colon->span.end : tk->span.end+1}
+        );
         return nullptr;
     }
 
@@ -332,10 +325,9 @@ std::shared_ptr<Ast::Type> Parser::parseType() {
     case TokenType::Array: {
         auto&& bracketOpen = tokens_.moveGet();
         if (!bracketOpen || bracketOpen->type != TokenType::SQUARE_BRACKET_OPEN) {
-            unsigned long start = bracketOpen ? bracketOpen->span.start : tk->span.start+1;
             saveError(
-                Tokens::Span{.line = tk->span.line, .start = start, .end = start+1},
-                "expected '[' when declaring an array type"
+                "expected '[' when declaring an array type",
+                {tk->span.line, tk->span.start, tk->span.end+1}
             );
 
             return std::make_shared<Ast::Type>(
@@ -351,8 +343,8 @@ std::shared_ptr<Ast::Type> Parser::parseType() {
         if (!bracketClose || bracketClose->type != TokenType::SQUARE_BRACKET_CLOSE) {
             unsigned long start = bracketClose ? bracketClose->span.start : bracketOpen->span.start+1;
             saveError(
-                Tokens::Span{tk->span.line, start, start+1},
-                "expected ']' after expression when declaring an array type"
+                "expected ']' after expression when declaring an array type",
+                {tk->span.line, start, start+1}
             );
             
             return std::make_shared<Ast::Type>(
@@ -365,7 +357,10 @@ std::shared_ptr<Ast::Type> Parser::parseType() {
         auto&& elemType = parseType();
 
         if (elemType->code == Ast::TypeEnum::ERROR) {
-            // err
+            saveError(
+                "expected type of array elements",
+                {bracketClose->span.line, bracketClose->span.end, bracketClose->span.end+1}
+            );
             return std::make_shared<Ast::Type>(
                 Tokens::Span{tk->span.line, tk->span.start, elemType->span.end},
                 Ast::TypeEnum::ERROR
@@ -417,7 +412,7 @@ std::shared_ptr<Ast::Var> Parser::parseVarDecl() {
         return nullptr;
 
     if (tk->type != TokenType::Var) {
-        saveError(tk->span, "Expected 'var' before new declaration");
+        saveError("Expected 'var' before new declaration", tk->span);
         return nullptr;
     }
 

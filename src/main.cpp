@@ -49,7 +49,7 @@ int main(int argc, char **argv) {
         std::cerr << "------ UNEXPECTED EXCEPTION scanning file (lx): " << fileName << "\n" << e.what() << "\n";
         return 3;
     }
-    if (lexer.releaseErrors())
+    if (lexer.hasErrors())
         return 4;
 
     // std::cout << "======= TOKEN SEQUENCE =======\n";
@@ -63,6 +63,6 @@ int main(int argc, char **argv) {
 
     parser.feed(TokenList(std::move(tokens)));
     parser.parse();
-    if (parser.releaseErrors())
+    if (parser.hasErrors())
         return 4;
 }
