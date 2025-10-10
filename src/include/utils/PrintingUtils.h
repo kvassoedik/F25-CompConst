@@ -6,6 +6,7 @@
 #define ANSI_AND ";"
 
 #define ANSI_RED "31"
+#define ANSI_YELLOW "33"
 #define ANSI_BOLD "1"
 
 #define ANSI_RESET "\033[0m"
