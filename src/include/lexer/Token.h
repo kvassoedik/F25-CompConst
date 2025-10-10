@@ -55,4 +55,5 @@ namespace Tokens {
     };
 }
 
-std::ostream& operator<<(std::ostream &os, const Tokens::BaseTk &o);
+std::ostream& operator<<(std::ostream& os, const Tokens::BaseTk& o);
+std::ostream& operator<<(std::ostream& os, const Tokens::Span& o);

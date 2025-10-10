@@ -1,9 +1,13 @@
 #include "lexer/Token.h"
 #include <sstream>
 
-std::ostream& operator<<(std::ostream &os, const Tokens::BaseTk& o) {
+std::ostream& operator<<(std::ostream& os, const Tokens::BaseTk& o) {
     o.print(os);
     return os;
+}
+
+std::ostream& operator<<(std::ostream& os, const Tokens::Span& o) {
+    return os << "@" << o.line << ":" << o.start << ":" << o.end;
 }
 
 void Tokens::BaseTk::print(std::ostream& os) const {
