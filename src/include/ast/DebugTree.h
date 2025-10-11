@@ -18,9 +18,15 @@ public:
     inline unsigned int getDepth() const noexcept { return depth_; }
 
     void print(const std::shared_ptr<Ast::Entity>& v, const std::string& prefix) {
-        std::cout << std::string(depth_, ' ') << prefix;
-        v->print(std::cout);
-        // std::cout << " " << v->span << "\n";
+        std::string newline;
+        size_t size = depth_ + prefix.size();
+        newline.reserve(size);
+        newline.assign(depth_, '-');
+
+        std::cout << newline << prefix;
+        newline.assign(size, ' ');
+        newline[0] = '\n';
+        v->print(std::cout, newline);
     }
 private:
     unsigned int depth_{0};
@@ -54,6 +60,7 @@ public:
                     depthIncrement_ = false;
                 }
             }
+            printer_.setDepth(0);
 
             if (alreadyDisplayed_.find(i) != alreadyDisplayed_.end())
                 continue;

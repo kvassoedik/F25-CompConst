@@ -14,7 +14,7 @@ int Parser::configure(int* argc, char** argv) {
 void Parser::feed(TokenList tokens) { tokens_ = std::move(tokens); }
 
 void Parser::parse() {
-    while (nextNode(currBlock_));
+    while (nextNode());
 }
 
 bool Parser::hasErrors() const {
@@ -23,94 +23,14 @@ bool Parser::hasErrors() const {
 
 /*******************************************************************************************************************/
 
-bool Parser::nextNode(std::shared_ptr<Ast::Block>& block) {
-    auto&& tk = tokens_.get();
-    if (!tk) return false;
-    
-    switch (tk->type) {
-    case TokenType::Var: {
-        auto&& node = parseVarDecl();
-        if (node) {
-            block->declarations.emplace_back(node);
-            block->declMap.emplace(node->id, std::move(node));
-        }
-        break;
-    }
-    case TokenType::Routine: {
-        auto&& node = parseRoutine();
-        if (node) {
-            block->declarations.emplace_back(node);
-            block->declMap.emplace(node->id, std::move(node));
-        }
-        break;
-    }
-    case TokenType::Type: {
-        auto&& node = parseTypeDecl();
-        if (node) {
-            block->typeMap.emplace(node->id, node->type);
-        }
-        break;
-    }
-    case TokenType::Print: {
-        auto&& node = parsePrintStmt();
-        if (node) {
-            block->statements.emplace_back(std::move(node));
-        }
-        break;
-    }
-    case TokenType::If: {
-        auto&& node = parseIfStmt();
-        if (node) {
-            block->statements.emplace_back(std::move(node));
-        }
-        break;
-    }
-    case TokenType::For: {
-        auto&& node = parseForStmt();
-        if (node) {
-            block->statements.emplace_back(std::move(node));
-        }
-        break;
-    }
-    case TokenType::While: {
-        auto&& node = parseWhileStmt();
-        if (node) {
-            block->statements.emplace_back(std::move(node));
-        }
-        break;
-    }
-    case TokenType::Identifier: {
-        auto&& node = parseModifiablePrimary();
-        if (node) {
-            tk = tokens_.get();
-            if (!tk || tk->type != TokenType::ASSIGNMENT) {
-                // err, rogue statement
-                break;
-            }
+bool Parser::nextNode() {
+    auto&& [success, tk] = parseEntity();
+    if (!success) {
+        if (!tk)
+            return false;
 
-            auto&& res = std::make_shared<Ast::Assignment>(node->span);
-            res->left = std::move(node);
-            auto&& expr = parseExpr();
-            if (expr) {
-                res->span.end = expr->span.end;
-                res->val = std::move(expr);
-                block->statements.emplace_back(std::move(res));
-            } else {
-                // err
-            }
-
-        }
-        break;
-    }
-    case TokenType::ENDLINE:
-    case TokenType::SEMICOLON: {
-        tokens_.move();
-        break;
-    }
-    default: {
         tokens_.move();
         saveError("invalid statement", tk->span);
-    }
     }
 
     return true;
@@ -148,21 +68,196 @@ std::shared_ptr<Ast::Type> Parser::findNamedType(const std::string& id) {
     return {nullptr};
 }
 
-std::shared_ptr<Ast::Block> Parser::parseBlock() {
-    auto&& res = Ast::mk<Ast::Block>(Tokens::Span{0, 0, 0});
+std::pair<bool, std::shared_ptr<Tokens::BaseTk>> Parser::parseEntity() {
+    auto&& tk = tokens_.get();
+    if (!tk)
+        return {false, nullptr};
+    
+    switch (tk->type) {
+    case TokenType::Var: {
+        auto&& node = parseVarDecl();
+        if (node) {
+            currBlock_->units.emplace_back(node);
+            currBlock_->declMap.emplace(node->id, std::move(node));
+        }
+        break;
+    }
+    case TokenType::Routine: {
+        auto&& node = parseRoutine();
+        if (node) {
+            currBlock_->units.emplace_back(node);
+            currBlock_->declMap.emplace(node->id, std::move(node));
+        }
+        break;
+    }
+    case TokenType::Type: {
+        auto&& node = parseTypeDecl();
+        if (node) {
+            currBlock_->typeMap.emplace(node->id, node->type);
+        }
+        break;
+    }
+    case TokenType::Print: {
+        auto&& node = parsePrintStmt();
+        if (node) {
+            currBlock_->units.emplace_back(std::move(node));
+        }
+        break;
+    }
+    case TokenType::If: {
+        auto&& node = parseIfStmt();
+        if (node) {
+            currBlock_->units.emplace_back(std::move(node));
+        }
+        break;
+    }
+    case TokenType::For: {
+        auto&& node = parseForStmt();
+        if (node) {
+            currBlock_->units.emplace_back(std::move(node));
+        }
+        break;
+    }
+    case TokenType::While: {
+        auto&& node = parseWhileStmt();
+        if (node) {
+            currBlock_->units.emplace_back(std::move(node));
+        }
+        break;
+    }
+    case TokenType::Identifier: {
+        auto&& node = parseModifiablePrimary();
+        if (node) {
+            tk = tokens_.get();
+            if (!tk || tk->type != TokenType::ASSIGNMENT) {
+                auto&& routineCall = parseRoutineCall(node);
+                if (routineCall) {
+                    currBlock_->units.emplace_back(std::move(routineCall));
+                    break;
+                }
+
+                // err, rogue statement
+                break;
+            }
+            
+            tokens_.move();
+            auto&& res = Ast::mk<Ast::Assignment>(node->span);
+            res->left = std::move(node);
+            auto&& expr = parseExpr();
+            if (expr) {
+                res->span.end = expr->span.end;
+                res->val = std::move(expr);
+                currBlock_->units.emplace_back(std::move(res));
+            } else {
+                // err
+            }
+
+        }
+        break;
+    }
+    case TokenType::ENDLINE:
+    case TokenType::SEMICOLON: {
+        tokens_.move();
+        break;
+    }
+    default:
+        return {false, std::move(tk)};
+    }
+
+    return {true, std::move(tk)};
+}
+
+void Parser::finalizeCurrBlock() {
+    if (!currBlock_->units.empty()) {
+        currBlock_->span.line = currBlock_->units[0]->span.line;
+        currBlock_->span.start = currBlock_->units[0]->span.start;
+        currBlock_->span.end = currBlock_->units[currBlock_->units.size()-1]->span.end;
+    }
+}
+
+std::shared_ptr<Ast::Block> Parser::parseRoutineBody(Tokens::Span initSpan) {
+    auto&& res = Ast::mk<Ast::Block>(initSpan);
     res->parent = currBlock_;
     currBlock_ = res;
 
+    bool ignoreErrors = false;
     while (true) {
-        auto&& tk = tokens_.get();
-        if (!tk || tk->type == TokenType::End || tk->type == TokenType::Else)
-            break;
-        if (!nextNode(res))
-            break;
+        auto&& [success, tk] = parseEntity();
+        if (!success) {
+            if (!tk)
+                break;
+
+            if (tk->type == TokenType::ENDLINE || tk->type == TokenType::SEMICOLON) {
+                ignoreErrors = false;
+                continue;
+            }
+            if (tk->type == TokenType::End)
+                break;
+
+            tokens_.move();
+            if (!ignoreErrors) {
+                saveError("invalid statement", tk->span);
+                ignoreErrors = true;
+            }
+        }
     }
 
+    finalizeCurrBlock();
     currBlock_ = currBlock_->parent;
     return res;
+}
+
+void Parser::parseIfBody(std::shared_ptr<Ast::IfStmt>& parent, Tokens::Span initSpan) {
+    {
+        auto&& res = Ast::mk<Ast::Block>(initSpan);
+        res->parent = currBlock_;
+        currBlock_ = res;
+    }
+
+    bool elseBodyFound = false;
+    bool ignoreErrors = false;
+    while (true) {
+        auto&& [success, tk] = parseEntity();
+        if (!success) {
+            if (!tk)
+                break;
+
+            if (tk->type == TokenType::ENDLINE || tk->type == TokenType::SEMICOLON) {
+                ignoreErrors = false;
+                continue;
+            }
+            if (tk->type == TokenType::End)
+                break;
+
+            tokens_.move();
+            if (tk->type == TokenType::Else) {
+                if (elseBodyFound) {
+                    saveError("multiple 'else' keywords encountered", tk->span);
+                    continue;
+                }
+
+                elseBodyFound = true;
+                finalizeCurrBlock();
+                auto&& elseBody = Ast::mk<Ast::Block>(Tokens::Span{tk->span.line, tk->span.end+1, tk->span.end+1});
+                elseBody->parent = currBlock_->parent;
+                parent->body = elseBody;
+                currBlock_ = std::move(elseBody);
+                continue;
+            }
+
+            if (!ignoreErrors) {
+                saveError("invalid statement", tk->span);
+                ignoreErrors = true;
+            }
+        }
+    }
+
+    finalizeCurrBlock();
+    if (elseBodyFound)
+        parent->elseBody = currBlock_;
+    else
+        parent->body = currBlock_;
+    currBlock_ = currBlock_->parent;
 }
 
 std::shared_ptr<Ast::Routine> Parser::parseRoutine() {
@@ -248,7 +343,7 @@ std::shared_ptr<Ast::Routine> Parser::parseRoutine() {
     if ((tk = tokens_.get()) != nullptr) {
         if (tk->type == TokenType::Is) {
             tokens_.move();
-            res->body = parseBlock();
+            res->body = parseRoutineBody(Tokens::Span{tk->span.line, tk->span.end+1, tk->span.end+1});
 
             tk = tokens_.get();
             if (!tk || tk->type != TokenType::End) {
@@ -258,7 +353,12 @@ std::shared_ptr<Ast::Routine> Parser::parseRoutine() {
             tokens_.move();
         } else if (tk->type == TokenType::ROUTINE_ARROW) {
             tokens_.move();
-            res->body = parseBlock();
+
+            auto&& body = Ast::mk<Ast::Block>(Tokens::Span{tk->span.line, tk->span.end+1, tk->span.end+1});
+            auto&& retStmt = Ast::mk<Ast::ReturnStmt>(body->span);
+            retStmt->val = std::move(parseExpr());
+            body->units.emplace_back(retStmt);
+            res->body = std::move(body);
         } else if (tk->type != TokenType::ENDLINE || tk->type != TokenType::SEMICOLON) {
             saveError(
                 "expected 'is' before routine body",
@@ -421,6 +521,7 @@ std::shared_ptr<Ast::Var> Parser::parseVarDecl() {
     }
 
     Tokens::Span headerSpan{tk->span.line, tk->span.start, id->span.end};
+    auto&& res = Ast::mk<Ast::Var>(headerSpan, ID_STR(id));
     std::shared_ptr<Ast::Type> explicitType{nullptr};
 
     auto&& colon = tokens_.moveGet();
@@ -429,8 +530,6 @@ std::shared_ptr<Ast::Var> Parser::parseVarDecl() {
         explicitType = parseType();
         headerSpan.end = explicitType->span.end;
     }
-
-    auto&& res = std::make_shared<Ast::Var>(headerSpan, ID_STR(id));
 
     auto&& is = tokens_.get();
     if (!is || is->type != TokenType::Is) {
@@ -448,7 +547,7 @@ std::shared_ptr<Ast::Var> Parser::parseVarDecl() {
     res->val = expr;
     res->type = explicitType
         ? explicitType
-        : (expr ? expr->type : std::make_shared<Ast::Type>(headerSpan, Ast::TypeEnum::ERROR));
+        : (expr ? expr->type : Ast::mk<Ast::Type>(headerSpan, Ast::TypeEnum::ERROR));
 
     return res;
 }
@@ -485,7 +584,7 @@ std::shared_ptr<Ast::Expr> Parser::parseExpr() {
         case TokenType::Or: {code = Ast::ExprEnum::Or; break;}
         case TokenType::Xor: {code = Ast::ExprEnum::Xor; break;}
         }
-        auto&& expr = std::make_shared<Ast::ExprOperation>(Tokens::Span{left->span.line, left->span.start, right->span.end}, code);
+        auto&& expr = Ast::mk<Ast::BinaryExpr>(Tokens::Span{left->span.line, left->span.start, right->span.end}, code);
         expr->left = std::move(left);
         expr->right = std::move(right);
         left = std::move(expr);
@@ -522,7 +621,7 @@ std::shared_ptr<Ast::Expr> Parser::parseRelation() {
         case TokenType::EQUAL: {code = Ast::ExprEnum::EQUAL; break;}
         case TokenType::UNEQUAL: {code = Ast::ExprEnum::UNEQUAL; break;}
         }
-        auto&& relation = std::make_shared<Ast::ExprOperation>(Tokens::Span{left->span.line, left->span.start, right->span.end}, code);
+        auto&& relation = Ast::mk<Ast::BinaryExpr>(Tokens::Span{left->span.line, left->span.start, right->span.end}, code);
         relation->left = std::move(left);
         relation->right = std::move(right);
         left = std::move(relation);
@@ -554,7 +653,7 @@ std::shared_ptr<Ast::Expr> Parser::parseSimple() {
         case TokenType::DIVIDE: {code = Ast::ExprEnum::Divide; break;}
         case TokenType::MODULO: {code = Ast::ExprEnum::Modulo; break;}
         }
-        auto&& simple = std::make_shared<Ast::ExprOperation>(Tokens::Span{left->span.line, left->span.start, right->span.end}, code);
+        auto&& simple = Ast::mk<Ast::BinaryExpr>(Tokens::Span{left->span.line, left->span.start, right->span.end}, code);
         simple->left = std::move(left);
         simple->right = std::move(right);
         left = std::move(simple);
@@ -585,7 +684,7 @@ std::shared_ptr<Ast::Expr> Parser::parseFactor() {
         case TokenType::PLUS: {code = Ast::ExprEnum::Add; break;}
         case TokenType::MINUS: {code = Ast::ExprEnum::Subtract; break;}
         }
-        auto&& factor = std::make_shared<Ast::ExprOperation>(Tokens::Span{left->span.line, left->span.start, right->span.end}, code);
+        auto&& factor = Ast::mk<Ast::BinaryExpr>(Tokens::Span{left->span.line, left->span.start, right->span.end}, code);
         factor->left = std::move(left);
         factor->right = std::move(right);
         left = std::move(factor);
@@ -631,23 +730,27 @@ std::shared_ptr<Ast::Expr> Parser::parsePrimary() {
     switch (tk->type) {
     case TokenType::True: {
         tokens_.move();
-        return std::make_shared<Ast::BoolLiteral>(tk->span, true);
+        return Ast::mk<Ast::BoolLiteral>(tk->span, true);
     }
     case TokenType::False: {
         tokens_.move();
-        return std::make_shared<Ast::BoolLiteral>(tk->span, false);
+        return Ast::mk<Ast::BoolLiteral>(tk->span, false);
     }
     case TokenType::IntLiteral: {
         tokens_.move();
-        return std::make_shared<Ast::IntLiteral>(tk->span, static_cast<Tokens::IntTk*>(&*tk)->value);
+        return Ast::mk<Ast::IntLiteral>(tk->span, static_cast<Tokens::IntTk*>(&*tk)->value);
     }
     case TokenType::RealLiteral: {
         tokens_.move();
-        return std::make_shared<Ast::IntLiteral>(tk->span, static_cast<Tokens::RealTk*>(&*tk)->value);
+        return Ast::mk<Ast::RealLiteral>(tk->span, static_cast<Tokens::RealTk*>(&*tk)->value);
     }
     case TokenType::Not: {
         tokens_.move();
-
+        auto&& res = Ast::mk<Ast::UnaryExpr>(tk->span, Ast::ExprEnum::Negate);
+        res->val = parseExpr();
+        if (res->val)
+            res->span.end = res->span.end;
+        return res;
     }
     case TokenType::PLUS:
     case TokenType::MINUS: {
@@ -657,13 +760,13 @@ std::shared_ptr<Ast::Expr> Parser::parsePrimary() {
             tokens_.move();
 
             if (lit->type == TokenType::IntLiteral) {
-                return std::make_shared<Ast::IntLiteral>(
+                return Ast::mk<Ast::IntLiteral>(
                     span,
                     static_cast<Tokens::IntTk*>(&*tk)->value * (tk->type == TokenType::MINUS ? -1 : 1)
                 );
             }
             if (lit->type == TokenType::RealLiteral) {
-                return std::make_shared<Ast::RealLiteral>(
+                return Ast::mk<Ast::RealLiteral>(
                     span,
                     static_cast<Tokens::RealTk*>(&*tk)->value * (tk->type == TokenType::MINUS ? -1 : 1)
                 );
@@ -674,48 +777,11 @@ std::shared_ptr<Ast::Expr> Parser::parsePrimary() {
         return nullptr;
     }
     case TokenType::Identifier: {
-        tokens_.move();
         auto&& modif = parseModifiablePrimary();
         if (modif) {
-            auto&& bracket = tokens_.get();
-            if (bracket && bracket->type == TokenType::BRACKET_OPEN) {
-                // Routine call
-
-                auto&& res = std::make_shared<Ast::RoutineCall>(tk->span, std::move(modif));
-
-                std::shared_ptr<Tokens::BaseTk> nextArgTk;
-                while ((nextArgTk = tokens_.get()) != nullptr) {
-                    tk = std::move(nextArgTk);
-                    if (tk->type == TokenType::BRACKET_CLOSE) {
-                        break;
-                    } else {
-                        auto&& arg = parseExpr();
-                        while ((nextArgTk = tokens_.get()) != nullptr) {
-                            tk = std::move(nextArgTk);
-                            if (tk->type == TokenType::BRACKET_CLOSE)
-                                break;
-
-                            tokens_.move();
-                            if (tk->type == TokenType::COMMA)
-                                break;
-                        }
-
-                        res->args.emplace_back(std::move(arg));
-
-                        if (tk->type == TokenType::BRACKET_CLOSE)
-                            break;
-                    }
-                }
-
-                if (tk->type != TokenType::BRACKET_CLOSE) {
-                    // err
-                    return nullptr;
-                }
-
-                res->span.end = tk->span.end;
-                return res;
-            }
-
+            auto&& routineCall = parseRoutineCall(modif);
+            if (routineCall)
+                return routineCall;
             return modif;
         }
     }
@@ -731,7 +797,7 @@ std::shared_ptr<Ast::ModifiablePrimary> Parser::parseModifiablePrimary() {
         return nullptr;
     }
 
-    auto&& res = std::make_shared<Ast::IdRef>(id->span, ID_STR(id));
+    auto&& res = Ast::mk<Ast::IdRef>(id->span, ID_STR(id));
     std::shared_ptr<Ast::ModifiablePrimary> head = res;
 
     std::shared_ptr<Tokens::BaseTk> tk;
@@ -749,7 +815,7 @@ std::shared_ptr<Ast::ModifiablePrimary> Parser::parseModifiablePrimary() {
                 break;
             }
 
-            auto&& node = std::make_shared<Ast::IdRef>(nextId->span, ID_STR(nextId));
+            auto&& node = Ast::mk<Ast::IdRef>(nextId->span, ID_STR(nextId));
             head->next = node;
             head = std::move(node);
         } else if (next->type == TokenType::SQUARE_BRACKET_OPEN) {
@@ -757,13 +823,55 @@ std::shared_ptr<Ast::ModifiablePrimary> Parser::parseModifiablePrimary() {
             tokens_.move();
             
             auto&& expr = parseExpr();
-            auto&& node = std::make_shared<Ast::ArrayAccess>(Tokens::Span{tk->span.line, tk->span.start, expr->span.end}, std::move(expr));
+            auto&& node = Ast::mk<Ast::ArrayAccess>(Tokens::Span{tk->span.line, tk->span.start, expr->span.end}, std::move(expr));
             head->next = node;
             head = std::move(node);
         } else
             break;
     }
 
+    return res;
+}
+
+std::shared_ptr<Ast::RoutineCall> Parser::parseRoutineCall(std::shared_ptr<Ast::ModifiablePrimary>& modif) {
+    auto&& tk = tokens_.get();
+    if (!tk && tk->type == TokenType::BRACKET_OPEN) {
+        return nullptr;
+    }
+
+    auto&& res = Ast::mk<Ast::RoutineCall>(modif->span, std::move(modif));
+
+    std::shared_ptr<Tokens::BaseTk> nextArgTk;
+    while ((nextArgTk = tokens_.moveGet()) != nullptr) {
+        tk = std::move(nextArgTk);
+        if (tk->type == TokenType::BRACKET_CLOSE) {
+            break;
+        } else {
+            auto&& arg = parseExpr();
+            while ((nextArgTk = tokens_.get()) != nullptr) {
+                tk = std::move(nextArgTk);
+                if (tk->type == TokenType::BRACKET_CLOSE)
+                    break;
+
+                tokens_.move();
+                if (tk->type == TokenType::COMMA)
+                    break;
+            }
+
+            res->args.emplace_back(std::move(arg));
+
+            if (tk->type == TokenType::BRACKET_CLOSE)
+                break;
+        }
+    }
+
+    if (tk->type != TokenType::BRACKET_CLOSE) {
+        // err
+        return nullptr;
+    }
+
+    tokens_.move();
+    res->span.end = tk->span.end;
     return res;
 }
 
@@ -775,7 +883,7 @@ std::shared_ptr<Ast::PrintStmt> Parser::parsePrintStmt() {
     auto&& tk = tokens_.get();
     DEBUG_HINT("print");
 
-    auto&& res = std::make_shared<Ast::PrintStmt>(tk->span);
+    auto&& res = Ast::mk<Ast::PrintStmt>(tk->span);
     std::shared_ptr<Ast::Expr> lastExpr{nullptr};
 
     tk = tokens_.moveGet();
@@ -811,7 +919,7 @@ std::shared_ptr<Ast::IfStmt> Parser::parseIfStmt() {
     std::cout << "= Parsing if\n";
 
     auto&& tk = tokens_.get();
-    auto&& res = std::make_shared<Ast::IfStmt>(tk->span);
+    auto&& res = Ast::mk<Ast::IfStmt>(tk->span);
     
     tokens_.move();
     auto&& expr = parseExpr();
@@ -827,24 +935,15 @@ std::shared_ptr<Ast::IfStmt> Parser::parseIfStmt() {
     }
     
     tokens_.move();
-    auto&& body = parseBlock();
-    res->body = std::move(body);
-    
-    tk = tokens_.get();
-    tokens_.move();
-    if (tk && tk->type == TokenType::Else) {
-        auto&& body = parseBlock();
-        res->elseBody = std::move(body);
-    }
+    parseIfBody(res, Tokens::Span{tk->span.line, tk->span.end+1, tk->span.end+1});
 
     tk = tokens_.get();
     if (!tk || tk->type != TokenType::End) {
         // err
         return nullptr;
     }
-    
+
     tokens_.move();
-    res->span.end = tk->span.end;
     return res;
 }
 
@@ -852,7 +951,7 @@ std::shared_ptr<Ast::ForStmt> Parser::parseForStmt() {
     std::cout << "= Parsing for\n";
 
     auto&& tk = tokens_.get();
-    auto&& res = std::make_shared<Ast::ForStmt>(tk->span);
+    auto&& res = Ast::mk<Ast::ForStmt>(tk->span);
     
     tk = tokens_.moveGet();
     if (!tk || tk->type != TokenType::Identifier) {
@@ -898,7 +997,7 @@ std::shared_ptr<Ast::ForStmt> Parser::parseForStmt() {
     }
 
     tokens_.move();
-    auto&& body = parseBlock();
+    auto&& body = parseRoutineBody(Tokens::Span{tk->span.line, tk->span.end+1, tk->span.end+1});
     res->body = std::move(body);
 
     tk = tokens_.get();
@@ -908,7 +1007,6 @@ std::shared_ptr<Ast::ForStmt> Parser::parseForStmt() {
     }
     
     tokens_.move();
-    res->span.end = tk->span.end;
     return res;
 }
 
@@ -921,7 +1019,7 @@ std::shared_ptr<Ast::RangeSpecifier> Parser::parseRangeSpecifier() {
 
     if (tk->type == TokenType::Identifier) {
         tokens_.move();
-        return std::make_shared<Ast::RangeSpecifier>(tk->span);
+        return Ast::mk<Ast::RangeSpecifier>(tk->span);
     }
 
     tokens_.move();
@@ -943,7 +1041,7 @@ std::shared_ptr<Ast::RangeSpecifier> Parser::parseRangeSpecifier() {
         return nullptr;
     }
 
-    return std::make_shared<Ast::IntRange>(
+    return Ast::mk<Ast::IntRange>(
         Tokens::Span{tk->span.line, tk->span.start, end->span.end},
         std::move(start),
         std::move(end)
@@ -954,7 +1052,7 @@ std::shared_ptr<Ast::WhileStmt> Parser::parseWhileStmt() {
     std::cout << "= Parsing while\n";
 
     auto&& tk = tokens_.get();
-    auto&& res = std::make_shared<Ast::WhileStmt>(tk->span);
+    auto&& res = Ast::mk<Ast::WhileStmt>(tk->span);
     tokens_.move();
 
     auto&& expr = parseExpr();
@@ -970,7 +1068,7 @@ std::shared_ptr<Ast::WhileStmt> Parser::parseWhileStmt() {
     }
 
     tokens_.move();
-    auto&& body = parseBlock();
+    auto&& body = parseRoutineBody(Tokens::Span{tk->span.line, tk->span.end+1, tk->span.end+1});
     if (!body) {
         // err
         return nullptr;
@@ -990,7 +1088,7 @@ std::shared_ptr<Ast::WhileStmt> Parser::parseWhileStmt() {
 
 std::shared_ptr<Ast::ReturnStmt> Parser::parseReturnStmt() {
     auto&& tk = tokens_.get();
-    auto&& res = std::make_shared<Ast::ReturnStmt>(tk->span);
+    auto&& res = Ast::mk<Ast::ReturnStmt>(tk->span);
     tokens_.move();
 
     auto&& expr = parseExpr();

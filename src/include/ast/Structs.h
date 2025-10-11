@@ -19,13 +19,6 @@ public:
     std::string id;
 };
 
-struct Stmt : public Entity {
-    Stmt(Tokens::Span span)
-        : Entity(span) {}
-
-    AST_DEBUG_PRINT_METHOD_SIGNATURE override {};
-};
-
 enum class TypeEnum {
     ERROR,
     RESOLVABLE,
@@ -66,11 +59,44 @@ struct Block final : public Entity {
     Block(Tokens::Span span)
         : Entity(span) {}
 
-    AST_DEBUG_PRINT_METHOD("Block { parent " << AST_DEBUG_PTR_TO_STR(parent) << ", decls (" << "}")
+    AST_DEBUG_PRINT_METHOD_SIGNATURE override {
+        std::string sUnits, sDecls, sTypes;
+
+        for (size_t i = 0; i < units.size(); ++i) {
+            sUnits += AST_DEBUG_PTR_TO_STR(units[i]);
+            if (i+1 < units.size())
+                sUnits += ", ";
+        }
+
+        for (auto&& it = declMap.begin(); it != declMap.end(); ++it) {
+            sUnits += AST_DEBUG_PTR_TO_STR(it->second);
+            sUnits += ", ";
+        }
+        if (!sUnits.empty()) {
+            sUnits.pop_back();
+            sUnits.pop_back();
+        }
+
+        for (auto&& it = typeMap.begin(); it != typeMap.end(); ++it) {
+            sTypes += AST_DEBUG_PTR_TO_STR(it->second);
+            sTypes += ", ";
+        }
+        if (!sTypes.empty()) {
+            sTypes.pop_back();
+            sTypes.pop_back();
+        }
+        
+        std::string pd(2, ' ');
+        os << "Block {"
+            << newline << pd << "parent " << AST_DEBUG_PTR_TO_STR(parent)
+            << newline << pd << "units: " << sUnits
+            << newline << pd << "decls: " << sDecls
+            << newline << pd << "types: " << sTypes
+            << newline << "}" << AST_DEBUG_PRINT_METHOD_IMPL_TAIL;
+    }
 
 public:
-    std::vector<std::shared_ptr<Decl>> declarations;
-    std::vector<std::shared_ptr<Stmt>> statements;
+    std::vector<std::shared_ptr<Entity>> units;
     std::unordered_map<std::string, std::shared_ptr<Decl>> declMap;
     std::unordered_map<std::string, std::shared_ptr<Type>> typeMap;
     std::shared_ptr<Block> parent{nullptr};
@@ -92,6 +118,7 @@ enum class ExprEnum {
     IdRef,
     ArrayAccess,
 
+    Negate,
     Add,
     Subtract,
     Multiply,
@@ -116,7 +143,9 @@ struct Expr : public Entity {
     Expr(Tokens::Span span, ExprEnum code, std::shared_ptr<Type> type = nullptr)
         : Entity(span), code(code), type(std::move(type)) {}
 
-    std::shared_ptr<Type> type;
+    AST_DEBUG_PRINT_METHOD("Expr_" << static_cast<int>(code));
+public:
+    std::shared_ptr<Type> type{nullptr};
     ExprEnum code;
 };
 
@@ -145,6 +174,8 @@ struct IdRef : public ModifiablePrimary {
             code = ExprEnum::IdRef;
         }
 
+    AST_DEBUG_PRINT_METHOD("IdRef " << id)
+public:
     std::string id;
 };
 
@@ -152,58 +183,118 @@ struct BoolLiteral : public Expr {
     BoolLiteral(Tokens::Span span, bool val)
         : Expr(span, ExprEnum::BoolLiteral), val(val) {}
 
+    AST_DEBUG_PRINT_METHOD((val ? "true" : "false"))
+public:
     bool val;
 };
 struct IntLiteral : public Expr {
     IntLiteral(Tokens::Span span, long val)
-        : Expr(span, ExprEnum::BoolLiteral), val(val) {}
+        : Expr(span, ExprEnum::IntLiteral), val(val) {}
 
+    AST_DEBUG_PRINT_METHOD("int " << val)
+public:
     long val;
 };
 struct RealLiteral : public Expr {
     RealLiteral(Tokens::Span span, double val)
-        : Expr(span, ExprEnum::BoolLiteral), val(val) {}
+        : Expr(span, ExprEnum::RealLiteral), val(val) {}
 
+    AST_DEBUG_PRINT_METHOD("real " << val)
+public:
     double val;
 };
 
-struct ExprOperation : public Expr {
-    ExprOperation(Tokens::Span span, ExprEnum code)
+struct BinaryExpr : public Expr {
+    BinaryExpr(Tokens::Span span, ExprEnum code)
         : Expr(span, code) {}
 
-    std::shared_ptr<Expr> left;
-    std::shared_ptr<Expr> right;
+    AST_DEBUG_PRINT_METHOD_SIGNATURE override {
+        std::string operation;
+        switch(code) {
+            case ExprEnum::Add: {
+                operation = "+";
+                break;
+            }
+            case ExprEnum::Subtract: {
+                operation = "-";
+                break;
+            }
+            case ExprEnum::Multiply: {
+                operation = "*";
+                break;
+            }
+            case ExprEnum::Divide: {
+                operation = "/";
+                break;
+            }
+            case ExprEnum::Modulo: {
+                operation = "%";
+                break;
+            }
+            default: {
+                operation = " INVALID_OPERATION_CODE ";
+            }
+        }
+
+        os << AST_DEBUG_PTR_TO_STR(left) << operation << AST_DEBUG_PTR_TO_STR(right) << AST_DEBUG_PRINT_METHOD_IMPL_TAIL;
+    }
+public:
+    std::shared_ptr<Expr> left{nullptr};
+    std::shared_ptr<Expr> right{nullptr};
+};
+struct UnaryExpr : public Expr {
+    UnaryExpr(Tokens::Span span, ExprEnum code)
+        : Expr(span, code) {}
+
+    AST_DEBUG_PRINT_METHOD("UnaryExpr_" << static_cast<int>(code) << " " << AST_DEBUG_PTR_TO_STR(val))
+public:
+    std::shared_ptr<Expr> val{nullptr};
 };
 
 /************************************ Statement ************************************/
 
-struct PrintStmt final : public Stmt {
+struct PrintStmt final : public Entity {
     PrintStmt(Tokens::Span span)
-        : Stmt(span) {}
+        : Entity(span) {}
 
+    AST_DEBUG_PRINT_METHOD_SIGNATURE override {
+        std::string sArgs;
+
+        for (size_t i = 0; i < args.size(); ++i) {
+            sArgs += AST_DEBUG_PTR_TO_STR(args[i]);
+            if (i+1 < args.size())
+                sArgs += ", ";
+        }
+        os << "print " << sArgs << AST_DEBUG_PRINT_METHOD_IMPL_TAIL;
+    }
+public:
     std::vector<std::shared_ptr<Expr>> args;
 };
 
-struct IfStmt final : public Stmt {
+struct IfStmt final : public Entity {
     IfStmt(Tokens::Span span)
-        : Stmt(span) {}
+        : Entity(span) {}
 
-    std::shared_ptr<Expr> condition;
-    std::shared_ptr<Block> body;
-    std::shared_ptr<Block> elseBody;
+    AST_DEBUG_PRINT_METHOD("if " << AST_DEBUG_PTR_TO_STR(condition)
+        << " then " << AST_DEBUG_PTR_TO_STR(body)
+        << " else " << AST_DEBUG_PTR_TO_STR(elseBody)<< AST_DEBUG_PRINT_METHOD_IMPL_TAIL);
+public:
+    std::shared_ptr<Expr> condition{nullptr};
+    std::shared_ptr<Block> body{nullptr};
+    std::shared_ptr<Block> elseBody{nullptr};
 };
 
-struct WhileStmt final : public Stmt {
+struct WhileStmt final : public Entity {
     WhileStmt(Tokens::Span span)
-        : Stmt(span) {}
+        : Entity(span) {}
 
     std::shared_ptr<Expr> condition;
     std::shared_ptr<Block> body;
 };
 
-struct ForStmt final : public Stmt {
+struct ForStmt final : public Entity {
     ForStmt(Tokens::Span span)
-        : Stmt(span) {}
+        : Entity(span) {}
 
     std::string counterId;
     std::shared_ptr<RangeSpecifier> range;
@@ -211,19 +302,21 @@ struct ForStmt final : public Stmt {
     bool reverse;
 };
 
-struct ReturnStmt final : public Stmt {
+struct ReturnStmt final : public Entity {
     ReturnStmt(Tokens::Span span)
-        : Stmt(span) {}
+        : Entity(span) {}
 
-    std::shared_ptr<Expr> val;
+    std::shared_ptr<Expr> val{nullptr};
 };
 
-struct Assignment final : public Stmt {
+struct Assignment final : public Entity {
     Assignment(Tokens::Span span)
-        : Stmt(span) {}
+        : Entity(span) {}
 
-    std::shared_ptr<ModifiablePrimary> left;
-    std::shared_ptr<Expr> val;
+    AST_DEBUG_PRINT_METHOD(AST_DEBUG_PTR_TO_STR(left) << " := " << AST_DEBUG_PTR_TO_STR(val))
+public:
+    std::shared_ptr<ModifiablePrimary> left{nullptr};
+    std::shared_ptr<Expr> val{nullptr};
 };
 
 /************************************ Var ************************************/
@@ -245,15 +338,15 @@ struct Routine final : public Decl {
         : Decl(span, std::move(id)) {}
 
     AST_DEBUG_PRINT_METHOD_SIGNATURE override {
-        std::string s;
+        std::string sParams;
 
         for (size_t i = 0; i < params.size(); ++i) {
-            s += AST_DEBUG_PTR_TO_STR(params[i]);
+            sParams += AST_DEBUG_PTR_TO_STR(params[i]);
             if (i+1 < params.size())
-                s += ", ";
+                sParams += ", ";
         }
-        os << "routine " << id << "(" << s << "): " << AST_DEBUG_PTR_TO_STR(retType) << " is "
-            << AST_DEBUG_PTR_TO_STR(body) << "   " << this->span << "\n";
+        os << "routine " << id << "(" << sParams << "): " << AST_DEBUG_PTR_TO_STR(retType) << " is "
+            << AST_DEBUG_PTR_TO_STR(body) << AST_DEBUG_PRINT_METHOD_IMPL_TAIL;
     }
 public:
     std::vector<std::shared_ptr<Var>> params;
@@ -261,10 +354,21 @@ public:
     std::shared_ptr<Block> body{nullptr};
 };
 
-struct RoutineCall final : public Expr {
+struct RoutineCall final : virtual public Expr {
     RoutineCall(Tokens::Span span, std::shared_ptr<ModifiablePrimary> routineId)
         : Expr(span, ExprEnum::RoutineCall), routineId(std::move(routineId)) {}
 
+    AST_DEBUG_PRINT_METHOD_SIGNATURE override {
+        std::string sArgs;
+
+        for (size_t i = 0; i < args.size(); ++i) {
+            sArgs += AST_DEBUG_PTR_TO_STR(args[i]);
+            if (i+1 < args.size())
+                sArgs += ", ";
+        }
+        os << "RoutineCall " << AST_DEBUG_PTR_TO_STR(routineId) << " (" << sArgs << ")" << AST_DEBUG_PRINT_METHOD_IMPL_TAIL;
+    }
+public:
     std::shared_ptr<ModifiablePrimary> routineId;
     std::vector<std::shared_ptr<Expr>> args;
 };
@@ -275,7 +379,7 @@ struct ArrayType final: public Type {
     ArrayType(Tokens::Span span)
         : Type(span, TypeEnum::Array) {}
 
-    AST_DEBUG_PRINT_METHOD("array[ " << AST_DEBUG_PTR_TO_STR(size) << " ]: " << AST_DEBUG_PTR_TO_STR(elemType))
+    AST_DEBUG_PRINT_METHOD("array[" << AST_DEBUG_PTR_TO_STR(size) << "]: " << AST_DEBUG_PTR_TO_STR(elemType))
     
 public:
     std::shared_ptr<Expr> size{nullptr};

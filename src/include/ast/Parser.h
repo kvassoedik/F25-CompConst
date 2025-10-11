@@ -19,12 +19,16 @@ public:
     void parse();
     bool hasErrors() const;
 private:
-    bool nextNode(std::shared_ptr<Ast::Block>& block);
+    bool nextNode();
     void saveError(std::string reason, Tokens::Span span);
     std::shared_ptr<Ast::Decl> findDeclaration(const std::string& id);
     std::shared_ptr<Ast::Type> findNamedType(const std::string& id);
 
-    std::shared_ptr<Ast::Block> parseBlock();
+    std::pair<bool, std::shared_ptr<Tokens::BaseTk>> parseEntity();
+    void finalizeCurrBlock();
+
+    std::shared_ptr<Ast::Block> parseRoutineBody(Tokens::Span initSpan);
+    void parseIfBody(std::shared_ptr<Ast::IfStmt>& parent, Tokens::Span initSpan);
     // No validation of 1st tk
     std::shared_ptr<Ast::Routine> parseRoutine();
     std::shared_ptr<Ast::Var> parseRoutineParam();
@@ -41,6 +45,8 @@ private:
     std::shared_ptr<Ast::Expr> parseSummand();
     std::shared_ptr<Ast::Expr> parsePrimary();
     std::shared_ptr<Ast::ModifiablePrimary> parseModifiablePrimary();
+    // If successful, invalidates the param!
+    std::shared_ptr<Ast::RoutineCall> parseRoutineCall(std::shared_ptr<Ast::ModifiablePrimary>& modif);
 
     // No validation of 1st tk
     std::shared_ptr<Ast::PrintStmt> parsePrintStmt();
