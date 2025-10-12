@@ -2,12 +2,13 @@
 
 #include "ast/Debug.h"
 #include "lexer/Token.h"
+#include "utils/PrintingUtils.h"
 
 #define AST_DEBUG_PRINT_METHOD_SIGNATURE \
 void print(std::ostream& os, const std::string& newline)
 
 #define AST_DEBUG_PRINT_METHOD_IMPL_TAIL \
-"   " << this->span << "\n"
+"   " ANSI_START ANSI_BLUE ANSI_APPLY << this->span << ANSI_RESET "\n"
 
 #define AST_DEBUG_PRINT_METHOD(_stmt_) \
 AST_DEBUG_PRINT_METHOD_SIGNATURE override {\
@@ -20,6 +21,7 @@ AST_DEBUG_PRINT_METHOD_SIGNATURE override {\
     std::string("^").append(ANSI_START ANSI_YELLOW ANSI_APPLY).append(std::to_string(_ptr_->debugId)).append(ANSI_RESET)) \
 : ("^" ANSI_START ANSI_YELLOW ANSI_APPLY "N" ANSI_RESET))
 
+
 namespace Ast {
 
 struct Entity {
@@ -27,7 +29,7 @@ struct Entity {
         : span(span) {}
     virtual ~Entity() {}
 
-    virtual AST_DEBUG_PRINT_METHOD_SIGNATURE {}
+    virtual AST_DEBUG_PRINT_METHOD_SIGNATURE = 0;
 public:
     Tokens::Span span;
 
