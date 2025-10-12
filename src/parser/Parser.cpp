@@ -3,9 +3,6 @@
 #include <sstream>
 
 #define ID_STR(tk) static_cast<Tokens::IdentifierTk*>(&*tk)->identifier
-#define DEBUG_HINT(str) std::cout \
-    << "= Parsing " << ANSI_START ANSI_BOLD ANSI_APPLY << str << ANSI_RESET" " \
-    << file_->fileName() << ":" << tk->span.line << ":" << tk->span.start - file_->lineStarts[tk->span.line-1] + 1 << "\n"
 
 int Parser::configure(int* argc, char** argv) {
     return 0;
@@ -246,11 +243,18 @@ void Parser::parseIfBody(std::shared_ptr<Ast::IfStmt>& parent, Tokens::Span init
             }
 
             if (!ignoreErrors) {
-                saveError("invalid statement", tk->span);
+                saveError("invalid statement (in if body)", tk->span);
                 ignoreErrors = true;
             }
         }
     }
+
+    auto&& tk = tokens_.get();
+    if (!tk || tk->type != TokenType::End) {
+        // err
+        return;
+    }
+    tokens_.move();
 
     finalizeCurrBlock();
     if (elseBodyFound)
@@ -262,7 +266,6 @@ void Parser::parseIfBody(std::shared_ptr<Ast::IfStmt>& parent, Tokens::Span init
 
 std::shared_ptr<Ast::Routine> Parser::parseRoutine() {
     auto&& tk = tokens_.get();
-    DEBUG_HINT("routine");
 
     // skipping over 'routine' keyword immediately
     auto&& id = tokens_.moveGet();
@@ -409,8 +412,6 @@ std::shared_ptr<Ast::Type> Parser::parseType() {
             Ast::TypeEnum::ERROR
         );
 
-    DEBUG_HINT("type");
-
     switch (tk->type)
     {
     case TokenType::IntegerType: {
@@ -544,10 +545,8 @@ std::shared_ptr<Ast::Var> Parser::parseVarDecl() {
 
     tokens_.move();
     auto&& expr = parseExpr();
-    res->val = expr;
-    res->type = explicitType
-        ? explicitType
-        : (expr ? expr->type : Ast::mk<Ast::Type>(headerSpan, Ast::TypeEnum::ERROR));
+    res->val = std::move(expr);
+    res->type = std::move(explicitType);
 
     return res;
 }
@@ -754,22 +753,35 @@ std::shared_ptr<Ast::Expr> Parser::parsePrimary() {
     }
     case TokenType::PLUS:
     case TokenType::MINUS: {
-        auto&& lit = tokens_.moveGet();
-        if (lit) {
-            Tokens::Span span{tk->span.line, tk->span.start, lit->span.end};
-            tokens_.move();
-
-            if (lit->type == TokenType::IntLiteral) {
+        auto&& opTk = tokens_.moveGet();
+        if (opTk) {
+            if (opTk->type == TokenType::IntLiteral) {
+                tokens_.move();
                 return Ast::mk<Ast::IntLiteral>(
-                    span,
+                    Tokens::Span{tk->span.line, tk->span.start, opTk->span.end},
                     static_cast<Tokens::IntTk*>(&*tk)->value * (tk->type == TokenType::MINUS ? -1 : 1)
                 );
             }
-            if (lit->type == TokenType::RealLiteral) {
+            if (opTk->type == TokenType::RealLiteral) {
+                tokens_.move();
                 return Ast::mk<Ast::RealLiteral>(
-                    span,
+                    Tokens::Span{tk->span.line, tk->span.start, opTk->span.end},
                     static_cast<Tokens::RealTk*>(&*tk)->value * (tk->type == TokenType::MINUS ? -1 : 1)
                 );
+            }
+            if (opTk->type == TokenType::Identifier) {
+                auto&& operand = parsePrimary();
+                if (tk->type == TokenType::MINUS) {
+                    auto&& res = Ast::mk<Ast::UnaryExpr>(
+                        Tokens::Span{tk->span.line, tk->span.start, operand ? operand->span.end : opTk->span.end},
+                        Ast::ExprEnum::Negate
+                    );
+                    res->val = std::move(operand);
+
+                    return res;
+                }
+
+                return operand;
             }
         }
         
@@ -835,7 +847,7 @@ std::shared_ptr<Ast::ModifiablePrimary> Parser::parseModifiablePrimary() {
 
 std::shared_ptr<Ast::RoutineCall> Parser::parseRoutineCall(std::shared_ptr<Ast::ModifiablePrimary>& modif) {
     auto&& tk = tokens_.get();
-    if (!tk && tk->type == TokenType::BRACKET_OPEN) {
+    if (!tk || tk->type != TokenType::BRACKET_OPEN) {
         return nullptr;
     }
 
@@ -881,7 +893,6 @@ std::shared_ptr<Ast::RoutineCall> Parser::parseRoutineCall(std::shared_ptr<Ast::
 
 std::shared_ptr<Ast::PrintStmt> Parser::parsePrintStmt() {
     auto&& tk = tokens_.get();
-    DEBUG_HINT("print");
 
     auto&& res = Ast::mk<Ast::PrintStmt>(tk->span);
     std::shared_ptr<Ast::Expr> lastExpr{nullptr};
@@ -916,8 +927,6 @@ std::shared_ptr<Ast::PrintStmt> Parser::parsePrintStmt() {
 }
 
 std::shared_ptr<Ast::IfStmt> Parser::parseIfStmt() {
-    std::cout << "= Parsing if\n";
-
     auto&& tk = tokens_.get();
     auto&& res = Ast::mk<Ast::IfStmt>(tk->span);
     
@@ -948,8 +957,6 @@ std::shared_ptr<Ast::IfStmt> Parser::parseIfStmt() {
 }
 
 std::shared_ptr<Ast::ForStmt> Parser::parseForStmt() {
-    std::cout << "= Parsing for\n";
-
     auto&& tk = tokens_.get();
     auto&& res = Ast::mk<Ast::ForStmt>(tk->span);
     
@@ -1011,8 +1018,6 @@ std::shared_ptr<Ast::ForStmt> Parser::parseForStmt() {
 }
 
 std::shared_ptr<Ast::RangeSpecifier> Parser::parseRangeSpecifier() {
-    std::cout << "= Parsing range\n";
-
     auto&& tk = tokens_.get();
     if (!tk)
         return nullptr;

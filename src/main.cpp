@@ -63,9 +63,9 @@ int main(int argc, char **argv) {
 
     parser.feed(TokenList(std::move(tokens)));
     parser.parse();
-    if (parser.hasErrors())
-        return 4;
 #if AST_DEBUG_ON
     Ast::debugInfo.printAll();
 #endif
+    if (parser.hasErrors())
+        return 4;
 }

@@ -11,7 +11,7 @@ class Parser final {
 public:
     Parser(std::shared_ptr<FileReader> file)
         : file_(std::move(file)),
-        root_(std::make_shared<Ast::Block>(Tokens::Span{.line = 1, .start = 0, .end = file_->size()})),
+        root_(Ast::mk<Ast::Block>(Tokens::Span{.line = 1, .start = 0, .end = file_->size()})),
         currBlock_(root_) {}
 
     int configure(int* argc, char** argv);
