@@ -291,7 +291,7 @@ struct IfStmt final : public Entity {
 
     AST_DEBUG_PRINT_METHOD("if " << AST_DEBUG_PTR_TO_STR(condition)
         << " then " << AST_DEBUG_PTR_TO_STR(body)
-        << " else " << AST_DEBUG_PTR_TO_STR(elseBody)<< AST_DEBUG_PRINT_METHOD_IMPL_TAIL);
+        << " else " << AST_DEBUG_PTR_TO_STR(elseBody));
 public:
     std::shared_ptr<Expr> condition{nullptr};
     std::shared_ptr<Block> body{nullptr};
