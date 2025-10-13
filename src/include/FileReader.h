@@ -1,5 +1,6 @@
 #pragma once
 
+#include "lexer/Token.h"
 #include <fstream>
 #include <memory>
 #include <vector>
@@ -37,6 +38,13 @@ public:
     inline size_t size() const noexcept { return buf_.size(); } 
     inline const char* c_str() const noexcept { return buf_.c_str(); }
     inline std::string substr(std::size_t __pos = 0UL, std::size_t __n = 18446744073709551615UL) const { return buf_.substr(__pos, __n); }
+    Tokens::Span eof() const noexcept {
+        return Tokens::Span{
+            lineStarts.size(),
+            buf_.size(),
+            buf_.size()+1,
+        };
+    }
 public:
     std::vector<unsigned long> lineStarts;
 private:
