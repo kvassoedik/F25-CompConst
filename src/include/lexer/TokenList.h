@@ -35,6 +35,7 @@ public:
     }
     inline void move() noexcept { pos_++; };
     inline size_t pos() const noexcept { return pos_; }
+    std::shared_ptr<Tokens::BaseTk> last() const noexcept { return tokens_.empty() ? nullptr : tokens_.back(); }
 private:
     void swap(TokenList& rhs) {
         tokens_.swap(rhs.tokens_);
