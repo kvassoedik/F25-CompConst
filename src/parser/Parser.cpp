@@ -237,7 +237,7 @@ void Parser::parseIfBody(std::shared_ptr<Ast::IfStmt>& parent, Tokens::Span init
                 finalizeCurrBlock();
                 auto&& elseBody = Ast::mk<Ast::Block>(Tokens::Span{tk->span.line, tk->span.end+1, tk->span.end+1});
                 elseBody->parent = currBlock_->parent;
-                parent->body = elseBody;
+                parent->body = std::move(currBlock_);
                 currBlock_ = std::move(elseBody);
                 continue;
             }
@@ -251,7 +251,7 @@ void Parser::parseIfBody(std::shared_ptr<Ast::IfStmt>& parent, Tokens::Span init
 
     auto&& tk = tokens_.get();
     if (!tk || tk->type != TokenType::End) {
-        // err
+        saveError("expected 'end' after block", tk ? tk->span : file_->eof());
         return;
     }
     tokens_.move();
@@ -936,23 +936,17 @@ std::shared_ptr<Ast::IfStmt> Parser::parseIfStmt() {
         // err
         return nullptr;
     }
+    res->condition = std::move(expr);
 
     tk = tokens_.get();
     if (!tk || tk->type != TokenType::Then) {
         // err
         return nullptr;
     }
-    
+
     tokens_.move();
     parseIfBody(res, Tokens::Span{tk->span.line, tk->span.end+1, tk->span.end+1});
 
-    tk = tokens_.get();
-    if (!tk || tk->type != TokenType::End) {
-        // err
-        return nullptr;
-    }
-
-    tokens_.move();
     return res;
 }
 
