@@ -21,8 +21,6 @@ public:
 private:
     bool nextNode();
     void saveError(std::string reason, Tokens::Span span);
-    std::shared_ptr<Ast::Decl> findDeclaration(const std::string& id);
-    std::shared_ptr<Ast::Type> findNamedType(const std::string& id);
 
     std::pair<bool, std::shared_ptr<Tokens::BaseTk>> parseEntity();
     void finalizeCurrBlock();
@@ -33,6 +31,7 @@ private:
     std::shared_ptr<Ast::Routine> parseRoutine();
     std::shared_ptr<Ast::Var> parseRoutineParam();
     std::shared_ptr<Ast::Var> parseVarDecl();
+    // No validation of 1st tk
     std::shared_ptr<Ast::TypeDecl> parseTypeDecl();
 
     // Guarantees non-nullptr

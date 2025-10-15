@@ -46,6 +46,7 @@ enum class TokenType: unsigned int {
     If,
     Then,
     Else,
+    Return,
     While,
     For,
     In,

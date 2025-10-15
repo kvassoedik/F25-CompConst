@@ -2,7 +2,7 @@ routine print1() is
     print 1
 end
 
-routine get2 => 2
+routine get2() => 2
 
 routine printl_int(param: integer): integer is
     print param

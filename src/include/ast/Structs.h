@@ -62,6 +62,9 @@ public:
 };
 
 struct TypeDecl final : public Decl {
+    TypeDecl(Tokens::Span span, std::string id)
+        : Decl(span, std::move(id)) {}
+
     AST_DEBUG_PRINT_METHOD("TypeDecl " << id << " is " << AST_DEBUG_PTR_TO_STR(type))
 public:
     std::shared_ptr<Type> type{nullptr};
@@ -164,13 +167,21 @@ struct RangeSpecifier : public Entity {
     AST_DEBUG_PRINT_METHOD("RangeSpecifier_base")
 };
 struct IntRange final : public RangeSpecifier {
-    IntRange(Tokens::Span span, std::shared_ptr<Expr> start, std::shared_ptr<Expr> end)
-        : RangeSpecifier(span), start(std::move(start)), end(std::move(end)) {}
+    IntRange(Tokens::Span span)
+        : RangeSpecifier(span) {}
 
     AST_DEBUG_PRINT_METHOD("IntRange " << AST_DEBUG_PTR_TO_STR(start) << " .. " << AST_DEBUG_PTR_TO_STR(end))
 public:
     std::shared_ptr<Expr> start{nullptr};
     std::shared_ptr<Expr> end{nullptr};
+};
+struct ArrayId : public RangeSpecifier {
+    ArrayId(Tokens::Span span)
+        : RangeSpecifier(span) {}
+
+    AST_DEBUG_PRINT_METHOD("ArrayId " << id)
+public:
+    std::string id;
 };
 
 struct ModifiablePrimary : public Expr {
@@ -188,7 +199,7 @@ struct IdRef final: public ModifiablePrimary {
             code = ExprEnum::IdRef;
         }
 
-    AST_DEBUG_PRINT_METHOD("IdRef " << id)
+    AST_DEBUG_PRINT_METHOD("IdRef " << id << ((next != nullptr) ? " -> " + AST_DEBUG_PTR_TO_STR(next) : ""))
 public:
     std::string id;
 };
@@ -313,7 +324,7 @@ struct ForStmt final : public Entity {
         : Entity(span) {}
 
     AST_DEBUG_PRINT_METHOD("for " << counterId << " in " << AST_DEBUG_PTR_TO_STR(range)
-        << (reverse ? " reverse" : " ") << "loop" << AST_DEBUG_PTR_TO_STR(body))
+        << (reverse ? " reverse " : " ") << "loop " << AST_DEBUG_PTR_TO_STR(body))
 public:
     std::string counterId;
     std::shared_ptr<RangeSpecifier> range{nullptr};
@@ -407,15 +418,16 @@ public:
 };
 
 struct ArrayAccess final : public ModifiablePrimary {
-    ArrayAccess(Tokens::Span span, std::shared_ptr<Expr> val)
-        : ModifiablePrimary(span), val(std::move(val)) {
+    ArrayAccess(Tokens::Span span)
+        : ModifiablePrimary(span) {
             code = ExprEnum::ArrayAccess;
         }
 
-    AST_DEBUG_PRINT_METHOD("ArrayAccess [" << AST_DEBUG_PTR_TO_STR(val) << "] ->" << AST_DEBUG_PTR_TO_STR(next))
+    AST_DEBUG_PRINT_METHOD("ArrayAccess ["
+        << AST_DEBUG_PTR_TO_STR(val) << "]"
+        << (next ? " ->" + AST_DEBUG_PTR_TO_STR(next) : ""))
 public:
     std::shared_ptr<Expr> val{nullptr};
-    std::shared_ptr<Expr> next{nullptr};
 };
 
 /************************************ Record ************************************/
@@ -424,7 +436,17 @@ struct RecordType final : public Type {
     RecordType(Tokens::Span span)
         : Type(span, TypeEnum::Record) {}
 
-    AST_DEBUG_PRINT_METHOD("record {" << "}")
+    AST_DEBUG_PRINT_METHOD_SIGNATURE override {
+        std::string sMembers;
+
+        for (size_t i = 0; i < members.size(); ++i) {
+            sMembers += AST_DEBUG_PTR_TO_STR(members[i]);
+            if (i+1 < members.size())
+                sMembers += ", ";
+        }
+
+        os << "record {" << sMembers <<  "}" << AST_DEBUG_PRINT_METHOD_IMPL_TAIL;
+    }
 public:
     std::vector<std::shared_ptr<Var>> members;
 };

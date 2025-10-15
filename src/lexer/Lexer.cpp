@@ -23,6 +23,7 @@ static std::unordered_map<std::string_view, TokenType> KEYWORDS
     {"if", TokenType::If},
     {"then", TokenType::Then},
     {"else", TokenType::Else},
+    {"return", TokenType::Return},
     {"while", TokenType::While},
     {"for", TokenType::For},
     {"in", TokenType::In},

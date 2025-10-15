@@ -24,9 +24,9 @@ public:
         return tokens_[pos_];
     };
     std::shared_ptr<Tokens::BaseTk> moveGet() noexcept {
-        if (pos_ + 1 >= tokens_.size())
+        if (++pos_ >= tokens_.size())
             return nullptr;
-        return tokens_[++pos_];
+        return tokens_[pos_];
     }
     std::shared_ptr<Tokens::BaseTk> lookAhead(size_t distance = 1) const noexcept {
         if (pos_ + distance >= tokens_.size())
