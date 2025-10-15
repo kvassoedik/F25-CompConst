@@ -14,12 +14,12 @@ routine main() is
     print (x*y)*2 // 20.0
     print 2+2*2 // 6
     print (2+2)*2 // 8
-    print (2+2)*not 2 // -8
+    print (2+2)*-2 // -8
     print (2 * x-1 + (x + x)/x) // 22.0
     print y*y > y // false
     print y=y and y=y // true
     print
     print true xor y=y // false
-    print (x>(y + x)) // false
+    print (x>y + x) // false
     print (x>x or y+x > x) and (false or true) xor false // true
 end

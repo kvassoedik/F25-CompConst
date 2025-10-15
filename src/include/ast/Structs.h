@@ -130,6 +130,7 @@ enum class ExprEnum {
     ArrayAccess,
 
     Negate,
+    Not,
     Add,
     Subtract,
     Multiply,
@@ -239,7 +240,7 @@ struct BinaryExpr final: public Expr {
             case ExprEnum::Add: {operation = "+"; break;}
             case ExprEnum::Subtract: {operation = "-"; break;}
             case ExprEnum::Multiply: {operation = "*"; break;}
-            case ExprEnum::Divide: {operation = "*"; break;}
+            case ExprEnum::Divide: {operation = "/"; break;}
             case ExprEnum::Modulo: {operation = "%"; break;}
             case ExprEnum::And: {operation = "and"; break;}
             case ExprEnum::Or: {operation = "or"; break;}
@@ -267,6 +268,7 @@ struct UnaryExpr final: public Expr {
         std::string operation;
         switch(code) {
             case ExprEnum::Negate: {operation = "-"; break;}
+            case ExprEnum::Not: {operation = "not "; break;}
             default: {operation = "INVALID_ "; break;}
         }
 

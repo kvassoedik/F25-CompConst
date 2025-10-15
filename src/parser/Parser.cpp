@@ -443,10 +443,9 @@ std::shared_ptr<Ast::Type> Parser::parseType() {
     }
     case TokenType::Record: {
         auto&& res = Ast::mk<Ast::RecordType>(tk->span);
-        std::cout << "b";
+
         auto&& contents = tokens_.moveGet();
         while (contents) {
-            std::cout << "a";
             if (contents->type == TokenType::End) {
                 tokens_.move();
                 res->span.end = contents->span.end;
@@ -623,7 +622,7 @@ std::shared_ptr<Ast::Expr> Parser::parseRelation() {
                     tk->span.end + 1,
                     tk->span.end + 4
                 };
-                saveError("expected expression after comparison operator", caret);
+                saveError("expected expression after a comparison operator", caret);
             }
             break;
         }
@@ -648,45 +647,6 @@ std::shared_ptr<Ast::Expr> Parser::parseRelation() {
 }
 
 std::shared_ptr<Ast::Expr> Parser::parseSimple() {
-    std::shared_ptr<Ast::Expr> left = parseFactor();
-    if (!left)
-        return nullptr;
-
-    std::shared_ptr<Tokens::BaseTk> tk;
-    while (((tk = tokens_.get()) != nullptr) && (
-        tk->type == TokenType::TIMES || tk->type == TokenType::DIVIDE || tk->type == TokenType::MODULO
-    )) {
-        tokens_.move();
-        auto&& right = parseFactor();
-        if (!right) {
-            {
-                Tokens::Span caret{
-                    tk->span.line,
-                    tk->span.end + 1,
-                    tk->span.end + 4
-                };
-                saveError("expected expression after a simple operator", caret);
-            }
-            break;
-        }
-
-        Ast::ExprEnum code;
-        switch (tk->type)
-        {
-        case TokenType::TIMES: {code = Ast::ExprEnum::Multiply; break;}
-        case TokenType::DIVIDE: {code = Ast::ExprEnum::Divide; break;}
-        case TokenType::MODULO: {code = Ast::ExprEnum::Modulo; break;}
-        }
-        auto&& simple = Ast::mk<Ast::BinaryExpr>(Tokens::Span{left->span.line, left->span.start, right->span.end}, code);
-        simple->left = std::move(left);
-        simple->right = std::move(right);
-        left = std::move(simple);
-    }
-    
-    return left;
-}
-
-std::shared_ptr<Ast::Expr> Parser::parseFactor() {
     std::shared_ptr<Ast::Expr> left = parseSummand();
     if (!left)
         return nullptr;
@@ -704,7 +664,7 @@ std::shared_ptr<Ast::Expr> Parser::parseFactor() {
                     tk->span.end + 1,
                     tk->span.end + 4
                 };
-                saveError("expected expression after a simple operator", caret);
+                saveError("expected expression after a summand operator", caret);
             }
             break;
         }
@@ -715,6 +675,45 @@ std::shared_ptr<Ast::Expr> Parser::parseFactor() {
         case TokenType::PLUS: {code = Ast::ExprEnum::Add; break;}
         case TokenType::MINUS: {code = Ast::ExprEnum::Subtract; break;}
         }
+        auto&& simple = Ast::mk<Ast::BinaryExpr>(Tokens::Span{left->span.line, left->span.start, right->span.end}, code);
+        simple->left = std::move(left);
+        simple->right = std::move(right);
+        left = std::move(simple);
+    }
+    
+    return left;
+}
+
+std::shared_ptr<Ast::Expr> Parser::parseSummand() {
+    std::shared_ptr<Ast::Expr> left = parseFactor();
+    if (!left)
+        return nullptr;
+
+    std::shared_ptr<Tokens::BaseTk> tk;
+    while (((tk = tokens_.get()) != nullptr) && (
+        tk->type == TokenType::TIMES || tk->type == TokenType::DIVIDE || tk->type == TokenType::MODULO
+    )) {
+        tokens_.move();
+        auto&& right = parseFactor();
+        if (!right) {
+            {
+                Tokens::Span caret{
+                    tk->span.line,
+                    tk->span.end + 1,
+                    tk->span.end + 4
+                };
+                saveError("expected expression after a factor operator", caret);
+            }
+            break;
+        }
+
+        Ast::ExprEnum code;
+        switch (tk->type)
+        {
+        case TokenType::TIMES: {code = Ast::ExprEnum::Multiply; break;}
+        case TokenType::DIVIDE: {code = Ast::ExprEnum::Divide; break;}
+        case TokenType::MODULO: {code = Ast::ExprEnum::Modulo; break;}
+        }
         auto&& factor = Ast::mk<Ast::BinaryExpr>(Tokens::Span{left->span.line, left->span.start, right->span.end}, code);
         factor->left = std::move(left);
         factor->right = std::move(right);
@@ -724,7 +723,7 @@ std::shared_ptr<Ast::Expr> Parser::parseFactor() {
     return left;
 }
 
-std::shared_ptr<Ast::Expr> Parser::parseSummand() {
+std::shared_ptr<Ast::Expr> Parser::parseFactor() {
     auto&& tk = tokens_.get();
     if (!tk)
         return nullptr;
@@ -734,15 +733,14 @@ std::shared_ptr<Ast::Expr> Parser::parseSummand() {
         auto&& expr = parseExpr();
         if (!expr) {
             Tokens::Span caret{
-                    tk->span.line,
-                    tk->span.end,
-                    tk->span.end + 1
-                };
-            saveError("expected expression inside parentheses",
-                          caret);
+                tk->span.line,
+                tk->span.end,
+                tk->span.end + 1
+            };
+            saveError("expected expression inside parentheses", caret);
             return nullptr;
         }
-        
+
         auto&& bracket = tokens_.get();
         if (!bracket || bracket->type != TokenType::BRACKET_CLOSE) {
             Tokens::Span insideExpr{
@@ -788,8 +786,9 @@ std::shared_ptr<Ast::Expr> Parser::parsePrimary() {
     }
     case TokenType::Not: {
         tokens_.move();
-        auto&& res = Ast::mk<Ast::UnaryExpr>(tk->span, Ast::ExprEnum::Negate);
-        res->val = parseExpr();
+        auto&& res = Ast::mk<Ast::UnaryExpr>(tk->span, Ast::ExprEnum::Not);
+        auto&& expr = parseExpr();
+        res->val = std::move(expr);
         if (res->val)
             res->span.end = res->span.end;
         return res;
@@ -802,14 +801,14 @@ std::shared_ptr<Ast::Expr> Parser::parsePrimary() {
                 tokens_.move();
                 return Ast::mk<Ast::IntLiteral>(
                     Tokens::Span{tk->span.line, tk->span.start, opTk->span.end},
-                    static_cast<Tokens::IntTk*>(&*tk)->value * (tk->type == TokenType::MINUS ? -1 : 1)
+                    static_cast<Tokens::IntTk*>(&*opTk)->value * (tk->type == TokenType::MINUS ? -1 : 1)
                 );
             }
             if (opTk->type == TokenType::RealLiteral) {
                 tokens_.move();
                 return Ast::mk<Ast::RealLiteral>(
                     Tokens::Span{tk->span.line, tk->span.start, opTk->span.end},
-                    static_cast<Tokens::RealTk*>(&*tk)->value * (tk->type == TokenType::MINUS ? -1 : 1)
+                    static_cast<Tokens::RealTk*>(&*opTk)->value * (tk->type == TokenType::MINUS ? -1 : 1)
                 );
             }
             if (opTk->type == TokenType::Identifier) {
