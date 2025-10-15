@@ -388,7 +388,7 @@ public:
     std::shared_ptr<Block> body{nullptr};
 };
 
-struct RoutineCall final : virtual public Expr {
+struct RoutineCall final : public Expr {
     RoutineCall(Tokens::Span span, std::shared_ptr<ModifiablePrimary> routineId)
         : Expr(span, ExprEnum::RoutineCall), routineId(std::move(routineId)) {}
 
