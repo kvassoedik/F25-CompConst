@@ -118,10 +118,10 @@ std::pair<bool, std::shared_ptr<Tokens::BaseTk>> Parser::parseEntity() {
                 }
 
                 if (tk) {
-                    saveError("invalid statement (mp)", tk->span);
+                    saveError("invalid statement", tk->span);
                     tokens_.move();
                 } else {
-                    saveError("invalid statement (a)", file_->eof());
+                    saveError("invalid statement", file_->eof());
                 }
                 break;
             }
@@ -135,12 +135,9 @@ std::pair<bool, std::shared_ptr<Tokens::BaseTk>> Parser::parseEntity() {
                 res->val = std::move(expr);
                 currBlock_->units.emplace_back(std::move(res));
             } else {
-                // ??? invalid statement, not this
-                {
-                    auto afterAssign = tokens_.get();
-                    saveError("expected expression after '='",
-                              afterAssign ? afterAssign->span : res->span);
-                }
+                auto afterAssign = tokens_.get();
+                saveError("expected expression after '='",
+                            afterAssign ? afterAssign->span : res->span);
             }
 
         }
@@ -178,7 +175,7 @@ std::shared_ptr<Ast::Block> Parser::parseRoutineBody(Tokens::Span initSpan) {
                 break;
 
             tokens_.move();
-            saveError("invalid statement (routine body)", tk->span);
+            saveError("invalid statement (in routine body)", tk->span);
         }
     }
 
@@ -311,11 +308,8 @@ std::shared_ptr<Ast::Routine> Parser::parseRoutine() {
 
             tk = tokens_.get();
             if (!tk || tk->type != TokenType::End) {
-                // ??? test more
-                {
-                    saveError("expected 'end' to close routine body",
+                saveError("expected 'end' to close routine body",
                               tk ? tk->span : res->span);
-                }
                 return nullptr;
             }
             tokens_.move();
@@ -510,11 +504,8 @@ std::shared_ptr<Ast::Var> Parser::parseVarDecl() {
     auto&& is = tokens_.get();
     if (!is || is->type != TokenType::Is) {
         if (!explicitType) {
-            // ??? doubles as invalid statement
-            {
-                saveError("expected ': type' in variable declaration",
+            saveError("expected ': type' in variable declaration",
                           is ? is->span : headerSpan);
-            }
             return nullptr;
         }
 
@@ -575,14 +566,12 @@ std::shared_ptr<Ast::Expr> Parser::parseExpr() {
         tokens_.move();
         auto&& right = parseRelation();
         if (!right) {
-            {
-                Tokens::Span caret{
-                    tk->span.line,
-                    tk->span.end + 1,
-                    tk->span.end + 4
-                };
-                saveError("expected expression after logical operator", caret);
-            }
+            Tokens::Span caret{
+                tk->span.line,
+                tk->span.end + 1,
+                tk->span.end + 4
+            };
+            saveError("expected expression after logical operator", caret);
             break;
         }
 
@@ -616,14 +605,12 @@ std::shared_ptr<Ast::Expr> Parser::parseRelation() {
         tokens_.move();
         auto&& right = parseSimple();
         if (!right) {
-            {
-                Tokens::Span caret{
-                    tk->span.line,
-                    tk->span.end + 1,
-                    tk->span.end + 4
-                };
-                saveError("expected expression after a comparison operator", caret);
-            }
+            Tokens::Span caret{
+                tk->span.line,
+                tk->span.end + 1,
+                tk->span.end + 4
+            };
+            saveError("expected expression after a comparison operator", caret);
             break;
         }
 
@@ -658,14 +645,12 @@ std::shared_ptr<Ast::Expr> Parser::parseSimple() {
         tokens_.move();
         auto&& right = parseSummand();
         if (!right) {
-            {
-                Tokens::Span caret{
-                    tk->span.line,
-                    tk->span.end + 1,
-                    tk->span.end + 4
-                };
-                saveError("expected expression after a summand operator", caret);
-            }
+            Tokens::Span caret{
+                tk->span.line,
+                tk->span.end + 1,
+                tk->span.end + 4
+            };
+            saveError("expected expression after a summand operator", caret);
             break;
         }
 
@@ -696,14 +681,12 @@ std::shared_ptr<Ast::Expr> Parser::parseSummand() {
         tokens_.move();
         auto&& right = parseFactor();
         if (!right) {
-            {
-                Tokens::Span caret{
-                    tk->span.line,
-                    tk->span.end + 1,
-                    tk->span.end + 4
-                };
-                saveError("expected expression after a factor operator", caret);
-            }
+            Tokens::Span caret{
+                tk->span.line,
+                tk->span.end + 1,
+                tk->span.end + 4
+            };
+            saveError("expected expression after a factor operator", caret);
             break;
         }
 
@@ -827,10 +810,8 @@ std::shared_ptr<Ast::Expr> Parser::parsePrimary() {
             }
         }
         
-        {
-            saveError("expected literal or primary expression after unary operator",
+        saveError("expected literal or primary expression after unary operator",
                       opTk ? opTk->span : tk->span);
-        }
         return nullptr;
     }
     case TokenType::Identifier: {
@@ -850,11 +831,8 @@ std::shared_ptr<Ast::Expr> Parser::parsePrimary() {
 std::shared_ptr<Ast::ModifiablePrimary> Parser::parseModifiablePrimary() {
     auto&& id = tokens_.get();
     if (!id || id->type != TokenType::Identifier) {
-        {
-            // ??? test
-            saveError("expected identifier",
-                      id ? id->span : Tokens::Span{currBlock_->span.line, currBlock_->span.start, currBlock_->span.start+1});
-        }
+        saveError("expected identifier",
+                id ? id->span : Tokens::Span{currBlock_->span.line, currBlock_->span.start, currBlock_->span.start+1});
         return nullptr;
     }
 
@@ -870,10 +848,8 @@ std::shared_ptr<Ast::ModifiablePrimary> Parser::parseModifiablePrimary() {
         if (tk->type == TokenType::DOT) {
             auto&& nextId = tokens_.moveGet();
             if (!nextId || nextId->type != TokenType::Identifier) {
-                {
-                    saveError("expected field identifier after '.'",
-                              nextId ? nextId->span : Tokens::Span{tk->span.line, tk->span.end, tk->span.end+1});
-                }
+                saveError("expected field identifier after '.'",
+                            nextId ? nextId->span : Tokens::Span{tk->span.line, tk->span.end, tk->span.end+1});
                 break;
             }
 
@@ -943,11 +919,8 @@ std::shared_ptr<Ast::RoutineCall> Parser::parseRoutineCall(std::shared_ptr<Ast::
     }
 
     if (tk->type != TokenType::BRACKET_CLOSE) {
-        {
-            // ??? test
-            saveError("expected ')' to close routine call arguments",
-                      tk ? tk->span : res->span);
-        }
+        saveError("expected ')' to close routine call arguments",
+                tk ? tk->span : res->span);
         return nullptr;
     }
 
@@ -973,10 +946,8 @@ std::shared_ptr<Ast::PrintStmt> Parser::parsePrintStmt() {
     do {
         auto&& nextExpr = parseExpr();
         if (!nextExpr) {
-            {
-                saveError("expected expression in print arguments",
-                          tk ? tk->span : res->span);
-            }
+            saveError("expected expression in print arguments",
+                        tk ? tk->span : res->span);
             break;
         }
         lastExpr = std::move(nextExpr);
@@ -987,10 +958,8 @@ std::shared_ptr<Ast::PrintStmt> Parser::parsePrintStmt() {
             break;
 
         if (tk->type != TokenType::COMMA) {
-            {
-                saveError("expected ',' between print arguments",
-                          tk->span);
-            }
+            saveError("expected ',' between print arguments",
+                        tk->span);
             break;
         }
         tokens_.move();
@@ -1008,21 +977,17 @@ std::shared_ptr<Ast::IfStmt> Parser::parseIfStmt() {
     tokens_.move();
     auto&& expr = parseExpr();
     if (!expr) {
-        {
-            auto afterIf = tokens_.get();
-            saveError("expected condition after 'if'",
-                      afterIf ? afterIf->span : res->span);
-        }
+        auto afterIf = tokens_.get();
+        saveError("expected condition after 'if'",
+                    afterIf ? afterIf->span : res->span);
         return nullptr;
     }
     res->condition = std::move(expr);
 
     tk = tokens_.get();
     if (!tk || tk->type != TokenType::Then) {
-        {
-            saveError("expected 'then' after 'if' condition",
-                      tk ? tk->span : expr->span);
-        }
+        saveError("expected 'then' after 'if' condition",
+                    tk ? tk->span : expr->span);
         return nullptr;
     }
 
@@ -1058,11 +1023,9 @@ std::shared_ptr<Ast::ForStmt> Parser::parseForStmt() {
     tokens_.move();
     auto&& range = parseRangeSpecifier();
     if (!range) {
-        {
-            auto afterIn = tokens_.get();
-            saveError("expected range specifier after 'in'",
-                      afterIn ? afterIn->span : res->span);
-        }
+        auto afterIn = tokens_.get();
+        saveError("expected range specifier after 'in'",
+                    afterIn ? afterIn->span : res->span);
         return nullptr;
     }
     res->range = std::move(range);
@@ -1086,11 +1049,8 @@ std::shared_ptr<Ast::ForStmt> Parser::parseForStmt() {
     }
 
     if (tk->type != TokenType::Loop) {
-        // ??? not recognized
-        {
-            saveError("expected 'loop' to start 'for' body",
-                      tk->span);
-        }
+        saveError("expected 'loop' to start 'for' body",
+                    tk->span);
         return nullptr;
     }
 
@@ -1100,10 +1060,8 @@ std::shared_ptr<Ast::ForStmt> Parser::parseForStmt() {
 
     tk = tokens_.get();
     if (!tk || tk->type != TokenType::End) {
-        {
-            saveError("expected 'end' to close 'for' statement",
-                      tk ? tk->span : res->span);
-        }
+        saveError("expected 'end' to close 'for' statement",
+                    tk ? tk->span : res->span);
         return nullptr;
     }
     
@@ -1132,10 +1090,8 @@ std::shared_ptr<Ast::RangeSpecifier> Parser::parseRangeSpecifier() {
 
     auto&& range = tokens_.get();
     if (!range || range->type != TokenType::DOUBLE_DOT) {
-        {
-            saveError("expected '..' in range specifier",
-                      range ? range->span : Tokens::Span{tk->span.line, start->span.end, start->span.end+1});
-        }
+        saveError("expected '..' in range specifier",
+                    range ? range->span : Tokens::Span{tk->span.line, start->span.end, start->span.end+1});
         return nullptr;
     }
 
@@ -1163,11 +1119,9 @@ std::shared_ptr<Ast::WhileStmt> Parser::parseWhileStmt() {
 
     auto&& expr = parseExpr();
     if (!expr) {
-        {
-            auto afterWhile = tokens_.get();
-            saveError("expected condition after 'while'",
-                      afterWhile ? afterWhile->span : res->span);
-        }
+        auto afterWhile = tokens_.get();
+        saveError("expected condition after 'while'",
+                    afterWhile ? afterWhile->span : res->span);
         return nullptr;
     }
 
