@@ -80,26 +80,22 @@ struct Block final : public Entity {
         for (size_t i = 0; i < units.size(); ++i) {
             sUnits += AST_DEBUG_PTR_TO_STR(units[i]);
             if (i+1 < units.size())
-                sUnits += ", ";
+                sUnits += ",";
         }
 
         for (auto&& it = declMap.begin(); it != declMap.end(); ++it) {
             sDecls += AST_DEBUG_PTR_TO_STR(it->second);
-            sDecls += ", ";
+            sDecls += ",";
         }
-        if (!sDecls.empty()) {
+        if (!sDecls.empty())
             sDecls.pop_back();
-            sDecls.pop_back();
-        }
 
         for (auto&& it = typeMap.begin(); it != typeMap.end(); ++it) {
             sTypes += AST_DEBUG_PTR_TO_STR(it->second);
-            sTypes += ", ";
+            sTypes += ",";
         }
-        if (!sTypes.empty()) {
+        if (!sTypes.empty())
             sTypes.pop_back();
-            sTypes.pop_back();
-        }
         
         std::string pd(2, ' ');
         os << "Block {"
@@ -200,7 +196,7 @@ struct IdRef final: public ModifiablePrimary {
             code = ExprEnum::IdRef;
         }
 
-    AST_DEBUG_PRINT_METHOD("IdRef " << id << ((next != nullptr) ? " -> " + AST_DEBUG_PTR_TO_STR(next) : ""))
+    AST_DEBUG_PRINT_METHOD("IdRef " << id << (next ? " -> " + AST_DEBUG_PTR_TO_STR(next) : ""))
 public:
     std::string id;
 };
@@ -290,7 +286,7 @@ struct PrintStmt final : public Entity {
         for (size_t i = 0; i < args.size(); ++i) {
             sArgs += AST_DEBUG_PTR_TO_STR(args[i]);
             if (i+1 < args.size())
-                sArgs += ", ";
+                sArgs += ",";
         }
         os << "print " << sArgs << AST_DEBUG_PRINT_METHOD_IMPL_TAIL;
     }
@@ -377,7 +373,7 @@ struct Routine final : public Decl {
         for (size_t i = 0; i < params.size(); ++i) {
             sParams += AST_DEBUG_PTR_TO_STR(params[i]);
             if (i+1 < params.size())
-                sParams += ", ";
+                sParams += ",";
         }
         os << "routine " << id << "(" << sParams << "): " << AST_DEBUG_PTR_TO_STR(retType) << " is "
             << AST_DEBUG_PTR_TO_STR(body) << AST_DEBUG_PRINT_METHOD_IMPL_TAIL;
@@ -398,7 +394,7 @@ struct RoutineCall final : public Expr {
         for (size_t i = 0; i < args.size(); ++i) {
             sArgs += AST_DEBUG_PTR_TO_STR(args[i]);
             if (i+1 < args.size())
-                sArgs += ", ";
+                sArgs += ",";
         }
         os << "RoutineCall " << AST_DEBUG_PTR_TO_STR(routineId) << " (" << sArgs << ")" << AST_DEBUG_PRINT_METHOD_IMPL_TAIL;
     }
@@ -444,7 +440,7 @@ struct RecordType final : public Type {
         for (size_t i = 0; i < members.size(); ++i) {
             sMembers += AST_DEBUG_PTR_TO_STR(members[i]);
             if (i+1 < members.size())
-                sMembers += ", ";
+                sMembers += ",";
         }
 
         os << "record {" << sMembers <<  "}" << AST_DEBUG_PRINT_METHOD_IMPL_TAIL;
