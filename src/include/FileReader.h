@@ -32,12 +32,12 @@ public:
         return *this;
     }
 
-    inline bool isOpen() const noexcept { return file_.get(); }
-    inline const std::string& fileName() const noexcept { return fileName_; }
-    inline const char& operator[](size_t i) const { return buf_[i]; }
-    inline size_t size() const noexcept { return buf_.size(); } 
-    inline const char* c_str() const noexcept { return buf_.c_str(); }
-    inline std::string substr(std::size_t __pos = 0UL, std::size_t __n = 18446744073709551615UL) const { return buf_.substr(__pos, __n); }
+    bool isOpen() const noexcept { return file_.get(); }
+    const std::string& fileName() const noexcept { return fileName_; }
+    const char& operator[](size_t i) const { return buf_[i]; }
+    size_t size() const noexcept { return buf_.size(); } 
+    const char* c_str() const noexcept { return buf_.c_str(); }
+    std::string substr(std::size_t __pos = 0UL, std::size_t __n = 18446744073709551615UL) const { return buf_.substr(__pos, __n); }
     Tokens::Span eof() const noexcept {
         return Tokens::Span{
             lineStarts.size(),

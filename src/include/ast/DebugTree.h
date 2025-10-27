@@ -15,8 +15,8 @@ namespace Ast {
 
 class DebugTreePrinter final {
 public:
-    inline void setDepth(unsigned int depth) noexcept { depth_ = depth; }
-    inline unsigned int getDepth() const noexcept { return depth_; }
+    void setDepth(unsigned int depth) noexcept { depth_ = depth; }
+    unsigned int getDepth() const noexcept { return depth_; }
 
     void print(const std::shared_ptr<Ast::Entity>& v, const std::string& prefix) {
         std::string newline;

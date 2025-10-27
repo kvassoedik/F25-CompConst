@@ -33,8 +33,8 @@ public:
             return nullptr;
         return tokens_[pos_ + distance];
     }
-    inline void move() noexcept { pos_++; };
-    inline size_t pos() const noexcept { return pos_; }
+    void move() noexcept { pos_++; };
+    size_t pos() const noexcept { return pos_; }
     std::shared_ptr<Tokens::BaseTk> last() const noexcept { return tokens_.empty() ? nullptr : tokens_.back(); }
 private:
     void swap(TokenList& rhs) {

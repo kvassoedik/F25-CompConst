@@ -30,8 +30,8 @@ private:
     bool isEndline(char c, bool doMove); // Returns the number of characters in the endline processed, if any
     bool lookAhead(char& c) const noexcept;
     bool get(char& c) const noexcept;
-    inline void move(unsigned long step) noexcept;
-    inline unsigned long currTkLen() const noexcept { return pos_ - currTkStart_; }
+    void move(unsigned long step) noexcept;
+    unsigned long currTkLen() const noexcept { return pos_ - currTkStart_; }
 
     bool canLog(int verbosityLevel) const noexcept { return verbosityLevel <= logVerbosity_; }
     void saveError(LexerStatus st, std::string reason);
