@@ -1,4 +1,4 @@
-#include "lexer/Token.h"
+#include "lexer/Tokens.h"
 #include <sstream>
 
 std::ostream& operator<<(std::ostream& os, const Tokens::BaseTk& o) {
@@ -12,7 +12,7 @@ std::ostream& operator<<(std::ostream& os, const Tokens::Span& o) {
 
 void Tokens::BaseTk::print(std::ostream& os) const {
     os << "BaseTk{ "
-#if SAVE_TOKEN_STRING
+#if LX_SAVE_TOKEN_STRING
         << _str << "   "
 #endif
         << static_cast<unsigned int>(type)

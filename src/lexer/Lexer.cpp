@@ -9,8 +9,6 @@
 #include <sstream>
 #include <algorithm>
 
-#define SAVE_EXCESSIVE_TOKENS 0
-
 static std::unordered_map<std::string_view, TokenType> KEYWORDS
 {
     {"true", TokenType::True},
@@ -72,16 +70,16 @@ std::vector<std::shared_ptr<Tokens::BaseTk>> Lexer::run() {
         auto tk = nextToken(st);
         if (canLog(1)) std::cout << "* New token: " << *tk << "\n";
 
-        #if SAVE_EXCESSIVE_TOKENS
+#if LX_SAVE_EXCESSIVE_TOKENS
         tokens.emplace_back(std::move(tk));
-        #else
+#else
         // Don't include spaces and comments
         if (static_cast<unsigned int>(tk->type) > 9 ||
             (static_cast<unsigned int>(tk->type) > 2 && static_cast<unsigned int>(tk->type) < 5))
         {
             tokens.emplace_back(std::move(tk));
         }
-        #endif
+#endif
     } while (!bits_.eof);
 
     return tokens;
@@ -329,7 +327,7 @@ void Lexer::initToken(std::shared_ptr<Tokens::BaseTk>& tk) {
     tk->span.end = pos_;
     currTkStart_ = tk->span.end;
 
-    #if SAVE_TOKEN_STRING
+#if LX_SAVE_TOKEN_STRING
     switch (tk->type) {
     case TokenType::ENDLINE: {
         tk->_str = "\\n";
@@ -341,7 +339,7 @@ void Lexer::initToken(std::shared_ptr<Tokens::BaseTk>& tk) {
     }
     default: tk->_str = std::move(file_->substr(tk->span.start, tk->span.end - tk->span.start));
     }
-    #endif
+#endif
 }
 
 TokenType Lexer::getDelimiterType(char c) {

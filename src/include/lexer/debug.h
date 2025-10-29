@@ -1,0 +1,4 @@
+#pragma once
+
+#define LX_SAVE_TOKEN_STRING 1
+#define LX_SAVE_EXCESSIVE_TOKENS 0

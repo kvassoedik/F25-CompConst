@@ -1,7 +1,7 @@
 #pragma once
 
-#include "ast/Structs.h"
-#include "ast/DebugTree.h"
+#include "parser/structs.h"
+#include "parser/DebugTree.h"
 
 namespace Ast {
 

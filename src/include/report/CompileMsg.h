@@ -1,6 +1,6 @@
 #pragma once
 
-#include "lexer/Token.h"
+#include "lexer/Tokens.h"
 
 struct CompileMsg final {
     enum class Level {

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "ast/Entity.h"
-#include "ast/DebugTree.h"
+#include "parser/Entity.h"
+#include "parser/DebugTree.h"
 #include <vector>
 #include <memory>
 #include <unordered_map>
@@ -13,7 +13,9 @@ struct Decl : public Entity {
     Decl(Tokens::Span span, std::string id)
         : Entity(span), id(std::move(id)) {}
 
-    AST_DEBUG_PRINT_METHOD_SIGNATURE override = 0;
+#if AST_DEBUG_ON
+    AST_DEBUGTREE_PRINT_METHOD_SIGNATURE override = 0;
+#endif
 public:
     std::string id;
 };
@@ -34,20 +36,7 @@ struct Type : public Entity {
     Type(Tokens::Span span, TypeEnum code)
         : Entity(span), code(code) {}
 
-    AST_DEBUG_PRINT_METHOD_SIGNATURE override {
-        std::string output;
-        switch(code) {
-            case TypeEnum::ERROR: {output = "<error>"; break;}
-            case TypeEnum::RESOLVABLE: {output = "<processed>"; break;}
-            case TypeEnum::Int: {output = "integer"; break;}
-            case TypeEnum::Real: {output = "real"; break;}
-            case TypeEnum::Bool: {output = "boolean"; break;}
-            case TypeEnum::Array: {output = "array"; break;}
-            case TypeEnum::Record: {output = "record"; break;}
-            default: {output = "INVALID_" + std::to_string(static_cast<int>(code)); break;}
-        }
-        os << "Type:" << output << AST_DEBUG_PRINT_METHOD_IMPL_TAIL;
-    }
+    AST_DEBUGTREE_PRINT_METHOD
 public:
     TypeEnum code;
 };
@@ -74,37 +63,8 @@ struct Block final : public Entity {
     Block(Tokens::Span span)
         : Entity(span) {}
 
-    AST_DEBUG_PRINT_METHOD_SIGNATURE override {
-        std::string sUnits, sDecls, sTypes;
-
-        for (size_t i = 0; i < units.size(); ++i) {
-            sUnits += AST_DEBUG_PTR_TO_STR(units[i]);
-            if (i+1 < units.size())
-                sUnits += ",";
-        }
-
-        for (auto&& it = declMap.begin(); it != declMap.end(); ++it) {
-            sDecls += AST_DEBUG_PTR_TO_STR(it->second);
-            sDecls += ",";
-        }
-        if (!sDecls.empty())
-            sDecls.pop_back();
-
-        for (auto&& it = typeMap.begin(); it != typeMap.end(); ++it) {
-            sTypes += AST_DEBUG_PTR_TO_STR(it->second);
-            sTypes += ",";
-        }
-        if (!sTypes.empty())
-            sTypes.pop_back();
-        
-        std::string pd(2, ' ');
-        os << "Block {"
-            << newline << pd << "parent " << AST_DEBUG_PTR_TO_STR(parent)
-            << newline << pd << "units: " << sUnits
-            << newline << pd << "decls: " << sDecls
-            << newline << pd << "types: " << sTypes
-            << newline << "}" << AST_DEBUG_PRINT_METHOD_IMPL_TAIL;
-    }
+    AST_DEBUGTREE_PRINT_METHOD
+    AST_VALIDATE_METHOD
 public:
     std::vector<std::shared_ptr<Entity>> units;
     std::unordered_map<std::string, std::shared_ptr<Decl>> declMap;
@@ -197,8 +157,10 @@ struct IdRef final: public ModifiablePrimary {
         }
 
     AST_DEBUG_PRINT_METHOD("IdRef " << id << (next ? " -> " + AST_DEBUG_PTR_TO_STR(next) : ""))
+    AST_VALIDATE_METHOD
 public:
     std::string id;
+    std::shared_ptr<Decl> ref{nullptr};
 };
 
 struct BoolLiteral final: public Expr {
@@ -356,6 +318,7 @@ struct Var final : public Decl {
         : Decl(span, std::move(id)) {}
 
     AST_DEBUG_PRINT_METHOD("var " << id << ": " << AST_DEBUG_PTR_TO_STR(type) << " is " << AST_DEBUG_PTR_TO_STR(val))
+    AST_VALIDATE_METHOD
 public:
     std::shared_ptr<Type> type{nullptr};
     std::shared_ptr<Expr> val{nullptr};
@@ -378,6 +341,7 @@ struct Routine final : public Decl {
         os << "routine " << id << "(" << sParams << "): " << AST_DEBUG_PTR_TO_STR(retType) << " is "
             << AST_DEBUG_PTR_TO_STR(body) << AST_DEBUG_PRINT_METHOD_IMPL_TAIL;
     }
+    AST_VALIDATE_METHOD
 public:
     std::vector<std::shared_ptr<Var>> params;
     std::shared_ptr<Type> retType{nullptr};

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Ast.h"
-#include "lexer/Token.h"
+#include "lexer/Tokens.h"
 #include "lexer/TokenList.h"
 #include "FileReader.h"
 #include "report/Report.h"

@@ -1,9 +1,8 @@
 #pragma once
 
 #include "lexer/TokenType.h"
+#include "lexer/debug.h"
 #include <string>
-
-#define SAVE_TOKEN_STRING 1
 
 namespace Tokens {
     struct Span {
@@ -18,7 +17,7 @@ namespace Tokens {
 
         Span span;
         const TokenType type;
-#if SAVE_TOKEN_STRING
+#if LX_SAVE_TOKEN_STRING
         std::string _str;
 #endif
     };

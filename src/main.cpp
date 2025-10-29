@@ -1,6 +1,7 @@
 #include "lexer/Lexer.h"
 #include "lexer/TokenList.h"
 #include "ast/Parser.h"
+#include "analyzer/Analyzer.h"
 #include <iostream>
 
 int main(int argc, char **argv) {
@@ -41,6 +42,10 @@ int main(int argc, char **argv) {
     if (parser.configure(&argc, argv) != 0)
         return 3;
 
+    Analyzer analyzer(file);
+    if (analyzer.configure(&argc, argv) != 0)
+        return 3;
+
     // Lexer stage
     std::vector<std::shared_ptr<Tokens::BaseTk>> tokens;
     try {
@@ -64,6 +69,12 @@ int main(int argc, char **argv) {
     parser.feed(TokenList(std::move(tokens)));
     parser.run();
     if (parser.hasErrors())
+        return 5;
+
+    auto astRoot = parser.getRoot();
+    analyzer.feed(std::move(astRoot));
+    analyzer.run();
+    if (analyzer.hasErrors())
         return 5;
 #if AST_DEBUG_ON
     Ast::debugInfo.printAll();
