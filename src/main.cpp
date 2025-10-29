@@ -44,13 +44,13 @@ int main(int argc, char **argv) {
     // Lexer stage
     std::vector<std::shared_ptr<Tokens::BaseTk>> tokens;
     try {
-        tokens = std::move(lexer.scan());
+        tokens = std::move(lexer.run());
     } catch(std::runtime_error e) {
         std::cerr << "------ UNEXPECTED EXCEPTION scanning file (lx): " << fileName << "\n" << e.what() << "\n";
-        return 3;
+        return 4;
     }
     if (lexer.hasErrors())
-        return 4;
+        return 5;
 
     // std::cout << "======= TOKEN SEQUENCE =======\n";
     // for (auto& t: tokens) {
@@ -62,9 +62,9 @@ int main(int argc, char **argv) {
         tokens.pop_back();
 
     parser.feed(TokenList(std::move(tokens)));
-    parser.parse();
+    parser.run();
     if (parser.hasErrors())
-        return 4;
+        return 5;
 #if AST_DEBUG_ON
     Ast::debugInfo.printAll();
 #endif

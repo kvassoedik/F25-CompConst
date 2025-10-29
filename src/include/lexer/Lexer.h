@@ -15,8 +15,8 @@ public:
         : file_(std::move(file)) {}
 
     int configure(int* argc, char** argv);
-    std::vector<std::shared_ptr<Tokens::BaseTk>> scan();
-    bool hasErrors() const;
+    std::vector<std::shared_ptr<Tokens::BaseTk>> run();
+    bool hasErrors() const { return reporter_.hasErrors(); };
 
     static bool isDigit(char c) { return (c > 47 && c < 58);}
     static bool isLetter(char c) { return ((c > 64 && c < 91) || (c > 96 && c < 123) || c == 95);}

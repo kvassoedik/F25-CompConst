@@ -15,9 +15,10 @@ public:
         currBlock_(root_) {}
 
     int configure(int* argc, char** argv);
-    void feed(TokenList tokens);
-    void parse();
-    bool hasErrors() const;
+    void feed(TokenList tokens) { tokens_ = std::move(tokens); }
+    void run();
+    bool hasErrors() const { return reporter_.hasErrors(); }
+    const std::shared_ptr<Ast::Block>& getRoot() const noexcept { return root_; } 
 private:
     bool nextNode();
     void saveError(std::string reason, Tokens::Span span);

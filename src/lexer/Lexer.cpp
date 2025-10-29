@@ -61,7 +61,7 @@ int Lexer::configure(int* argc, char** argv) {
     return 0;
 }
 
-std::vector<std::shared_ptr<Tokens::BaseTk>> Lexer::scan() {
+std::vector<std::shared_ptr<Tokens::BaseTk>> Lexer::run() {
     if (!file_->isOpen())
         throw std::runtime_error("No opened file");
 
@@ -85,10 +85,6 @@ std::vector<std::shared_ptr<Tokens::BaseTk>> Lexer::scan() {
     } while (!bits_.eof);
 
     return tokens;
-}
-
-bool Lexer::hasErrors() const {
-    return reporter_.hasErrors();
 }
 
 std::shared_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {

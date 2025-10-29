@@ -8,14 +8,8 @@ int Parser::configure(int* argc, char** argv) {
     return 0;
 }
 
-void Parser::feed(TokenList tokens) { tokens_ = std::move(tokens); }
-
-void Parser::parse() {
+void Parser::run() {
     while (nextNode());
-}
-
-bool Parser::hasErrors() const {
-    return reporter_.hasErrors();
 }
 
 /*******************************************************************************************************************/
