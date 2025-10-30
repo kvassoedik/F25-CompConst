@@ -185,7 +185,7 @@ public:
 
 struct BoolLiteral final: public Expr {
     BoolLiteral(Tokens::Span span, bool val)
-        : Expr(span, ExprEnum::BoolLiteral), val(val), known(true) {}
+        : Expr(span, ExprEnum::BoolLiteral), val(val) {}
 
     #if AST_DEBUG_ON
         AST_DEBUGTREE_PRINT_METHOD
@@ -195,7 +195,7 @@ public:
 };
 struct IntLiteral final: public Expr {
     IntLiteral(Tokens::Span span, long val)
-        : Expr(span, ExprEnum::IntLiteral), val(val), known(true) {}
+        : Expr(span, ExprEnum::IntLiteral), val(val) {}
 
     #if AST_DEBUG_ON
         AST_DEBUGTREE_PRINT_METHOD
@@ -205,7 +205,7 @@ public:
 };
 struct RealLiteral final: public Expr {
     RealLiteral(Tokens::Span span, double val)
-        : Expr(span, ExprEnum::RealLiteral), val(val), known(true) {}
+        : Expr(span, ExprEnum::RealLiteral), val(val) {}
 
     #if AST_DEBUG_ON
         AST_DEBUGTREE_PRINT_METHOD
