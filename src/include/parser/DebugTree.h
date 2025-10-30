@@ -26,9 +26,36 @@ public:
     void pushPrint(unsigned long debugId);
 
     // ---------- Node-specific printing methods ----------
-    
+    void print(Ast::Entity& node);
     void print(Ast::Type& node);
+    void print(Ast::Expr& node);
+    void print(Ast::RangeSpecifier& node);
     void print(Ast::Block& node);
+    void print(Ast::Decl& node);
+    void print(Ast::TypeRef& node);
+    void print(Ast::TypeDecl& node);
+    void print(Ast::ArrayType& node);
+    void print(Ast::RecordType& node);
+    void print(Ast::IntRange& node);
+    void print(Ast::ArrayId& node);
+    void print(Ast::ArrayAccess& node);
+    void print(Ast::ModifiablePrimary& node);
+    void print(Ast::IdRef& node);
+    void print(Ast::BoolLiteral& node);
+    void print(Ast::IntLiteral& node);
+    void print(Ast::RealLiteral& node);
+    void print(Ast::BinaryExpr& node);
+    void print(Ast::UnaryExpr& node);
+    void print(Ast::PrintStmt& node);
+    void print(Ast::IfStmt& node);
+    void print(Ast::WhileStmt& node);
+    void print(Ast::ForStmt& node);
+    void print(Ast::ReturnStmt& node);
+    void print(Ast::Assignment& node);
+    void print(Ast::Var& node);
+    void print(Ast::Routine& node);
+    void print(Ast::RoutineCall& node);
+
 private:
     void printImpl(const std::shared_ptr<Ast::Entity>& node, const std::string& prefix);
 private:

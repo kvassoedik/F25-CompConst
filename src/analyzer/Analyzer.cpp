@@ -1,5 +1,5 @@
 #include "analyzer/Analyzer.h"
-#include "ast/Ast.h"
+#include "parser/Ast.h"
 #include "utils/PrintingUtils.h"
 
 int Analyzer::configure(int* argc, char** argv) {
