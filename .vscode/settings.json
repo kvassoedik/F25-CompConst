@@ -47,7 +47,8 @@
         "typeinfo": "cpp",
         "unordered_set": "cpp",
         "sstream": "cpp",
-        "cstring": "cpp"
+        "cstring": "cpp",
+        "list": "cpp"
     },
     "cmake.sourceDirectory": "/home/user/Documents/work/CompConst/src"
 }

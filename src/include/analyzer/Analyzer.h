@@ -21,10 +21,17 @@ public:
     bool hasErrors() const { return reporter_.hasErrors(); };
 
     void validate(Ast::IdRef& node);
+    void validate(Ast::ArrayAccess& node);
     void validate(Ast::Var& node);
     void validate(Ast::Routine& node);
     void validate(Ast::Block& node);
+    void validate(Ast::Expr& node);
+    void validate(Ast::IfStmt& node);
 private:
+    bool areTypesEqual(const std::shared_ptr<Ast::Type>& t1, const std::shared_ptr<Ast::Type>& t2);
+    std::string stringifyType(const std::shared_ptr<Ast::Type>& t);
+    std::shared_ptr<Ast::Decl> searchDeclaration(const std::string& id);
+
     void saveError(std::string reason, Tokens::Span span);
 private:
     std::shared_ptr<FileReader> file_;

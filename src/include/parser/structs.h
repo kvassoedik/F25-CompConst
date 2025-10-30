@@ -3,6 +3,7 @@
 #include "parser/Entity.h"
 #include "parser/DebugTree.h"
 #include <vector>
+#include <list>
 #include <memory>
 #include <unordered_map>
 #include <algorithm>
@@ -18,6 +19,7 @@ struct Decl : public Entity {
 #endif
 public:
     std::string id;
+    bool isRoutine: 1 = false; // declarations can be either routine or var
 };
 
 enum class TypeEnum {
@@ -30,6 +32,7 @@ enum class TypeEnum {
 
     Array,
     Record,
+    Routine,
 };
 
 struct Type : public Entity {
@@ -66,7 +69,7 @@ struct Block final : public Entity {
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
 public:
-    std::vector<std::shared_ptr<Entity>> units;
+    std::list<std::shared_ptr<Entity>> units;
     std::unordered_map<std::string, std::shared_ptr<Decl>> declMap;
     std::unordered_map<std::string, std::shared_ptr<Type>> typeMap;
     std::shared_ptr<Block> parent{nullptr};
@@ -81,7 +84,6 @@ enum class ExprEnum {
     IntLiteral,
     RealLiteral,
 
-    CompoundPrimary,
     IdRef,
     ArrayAccess,
 
@@ -114,7 +116,9 @@ struct Expr : public Entity {
     AST_DEBUG_PRINT_METHOD("Expr_base " << static_cast<int>(code));
 public:
     std::shared_ptr<Type> type{nullptr};
+    std::weak_ptr<Entity> parent;
     ExprEnum code;
+    bool known: 1 = false;
 };
 
 struct RangeSpecifier : public Entity {
@@ -165,7 +169,7 @@ public:
 
 struct BoolLiteral final: public Expr {
     BoolLiteral(Tokens::Span span, bool val)
-        : Expr(span, ExprEnum::BoolLiteral), val(val) {}
+        : Expr(span, ExprEnum::BoolLiteral), val(val), known(true) {}
 
     AST_DEBUG_PRINT_METHOD((val ? "true" : "false"))
 public:
@@ -173,7 +177,7 @@ public:
 };
 struct IntLiteral final: public Expr {
     IntLiteral(Tokens::Span span, long val)
-        : Expr(span, ExprEnum::IntLiteral), val(val) {}
+        : Expr(span, ExprEnum::IntLiteral), val(val), known(true) {}
 
     AST_DEBUG_PRINT_METHOD("int " << val)
 public:
@@ -181,7 +185,7 @@ public:
 };
 struct RealLiteral final: public Expr {
     RealLiteral(Tokens::Span span, double val)
-        : Expr(span, ExprEnum::RealLiteral), val(val) {}
+        : Expr(span, ExprEnum::RealLiteral), val(val), known(true) {}
 
     AST_DEBUG_PRINT_METHOD("real " << val)
 public:
@@ -322,13 +326,16 @@ struct Var final : public Decl {
 public:
     std::shared_ptr<Type> type{nullptr};
     std::shared_ptr<Expr> val{nullptr};
+    bool initialized: 1 = false;
 };
 
 /************************************ Routine ************************************/
 
 struct Routine final : public Decl {
     Routine(Tokens::Span span, std::string id)
-        : Decl(span, std::move(id)) {}
+        : Decl(span, std::move(id)) {
+            isRoutine = true;
+        }
 
     AST_DEBUG_PRINT_METHOD_SIGNATURE override {
         std::string sParams;
