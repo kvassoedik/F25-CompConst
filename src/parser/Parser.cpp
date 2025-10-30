@@ -43,61 +43,50 @@ std::pair<bool, std::shared_ptr<Tokens::BaseTk>> Parser::parseEntity() {
     switch (tk->type) {
     case TokenType::Var: {
         auto&& node = parseVarDecl();
-        if (node) {
-            currBlock_->units.emplace_back(node);
-            currBlock_->declMap.emplace(node->id, std::move(node));
-        }
+        if (node)
+            currBlock_->units.push_back(std::move(node));
         break;
     }
     case TokenType::Routine: {
         auto&& node = parseRoutine();
-        if (node) {
-            currBlock_->units.emplace_back(node);
-            currBlock_->declMap.emplace(node->id, std::move(node));
-        }
+        if (node)
+            currBlock_->units.push_back(std::move(node));
         break;
     }
     case TokenType::Type: {
         auto&& node = parseTypeDecl();
-        if (node) {
-            currBlock_->typeMap.emplace(node->id, node->type);
-            currBlock_->units.emplace_back(std::move(node));
-        }
+        if (node)
+            currBlock_->units.push_back(std::move(node));
         break;
     }
     case TokenType::Print: {
         auto&& node = parsePrintStmt();
-        if (node) {
-            currBlock_->units.emplace_back(std::move(node));
-        }
+        if (node)
+            currBlock_->units.push_back(std::move(node));
         break;
     }
     case TokenType::If: {
         auto&& node = parseIfStmt();
-        if (node) {
-            currBlock_->units.emplace_back(std::move(node));
-        }
+        if (node)
+            currBlock_->units.push_back(std::move(node));
         break;
     }
     case TokenType::For: {
         auto&& node = parseForStmt();
-        if (node) {
-            currBlock_->units.emplace_back(std::move(node));
-        }
+        if (node)
+            currBlock_->units.push_back(std::move(node));
         break;
     }
     case TokenType::While: {
         auto&& node = parseWhileStmt();
-        if (node) {
-            currBlock_->units.emplace_back(std::move(node));
-        }
+        if (node)
+            currBlock_->units.push_back(std::move(node));
         break;
     }
     case TokenType::Return: {
         auto&& node = parseReturnStmt();
-        if (node) {
-            currBlock_->units.emplace_back(std::move(node));
-        }
+        if (node)
+            currBlock_->units.push_back(std::move(node));
         break;
     }
     case TokenType::Identifier: {
@@ -107,7 +96,7 @@ std::pair<bool, std::shared_ptr<Tokens::BaseTk>> Parser::parseEntity() {
             if (!tk || tk->type != TokenType::ASSIGNMENT) {
                 auto&& routineCall = parseRoutineCall(node);
                 if (routineCall) {
-                    currBlock_->units.emplace_back(std::move(routineCall));
+                    currBlock_->units.push_back(std::move(routineCall));
                     break;
                 }
 
@@ -127,7 +116,7 @@ std::pair<bool, std::shared_ptr<Tokens::BaseTk>> Parser::parseEntity() {
             if (expr) {
                 res->span.end = expr->span.end;
                 res->val = std::move(expr);
-                currBlock_->units.emplace_back(std::move(res));
+                currBlock_->units.push_back(std::move(res));
             } else {
                 auto afterAssign = tokens_.get();
                 saveError("expected expression after '='",
@@ -262,7 +251,7 @@ std::shared_ptr<Ast::Routine> Parser::parseRoutine() {
             } else {
                 auto&& param = parseRoutineParam();
                 if (param)
-                    res->params.emplace_back(std::move(param));
+                    res->params.push_back(std::move(param));
                 
                 while ((nextParamTk = tokens_.get()) != nullptr) {
                     tk = std::move(nextParamTk);
@@ -313,7 +302,7 @@ std::shared_ptr<Ast::Routine> Parser::parseRoutine() {
             auto&& body = Ast::mk<Ast::Block>(Tokens::Span{tk->span.line, tk->span.end+1, tk->span.end+1});
             auto&& retStmt = Ast::mk<Ast::ReturnStmt>(body->span);
             retStmt->val = std::move(parseExpr());
-            body->units.emplace_back(retStmt);
+            body->units.push_back(std::move(retStmt));
             res->body = std::move(body);
         } else if (tk->type != TokenType::ENDLINE && tk->type != TokenType::SEMICOLON) {
             saveError(
@@ -448,7 +437,7 @@ std::shared_ptr<Ast::Type> Parser::parseType() {
 
             auto&& var = parseVarDecl();
             if (var)
-                res->members.emplace_back(std::move(var));
+                res->members.push_back(std::move(var));
 
             auto&& nextTk = tokens_.get();
             if (!nextTk)
@@ -905,7 +894,7 @@ std::shared_ptr<Ast::RoutineCall> Parser::parseRoutineCall(std::shared_ptr<Ast::
                     break;
             }
 
-            res->args.emplace_back(std::move(arg));
+            res->args.push_back(std::move(arg));
 
             if (tk->type == TokenType::BRACKET_CLOSE)
                 break;
