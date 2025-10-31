@@ -20,13 +20,26 @@ public:
     void run();
     bool hasErrors() const { return reporter_.hasErrors(); };
 
+    void validate(Ast::TypeRef& node);
+    void validate(Ast::TypeDecl& node);
+    void validate(Ast::Block& node);
+    void validate(Ast::IntRange& node);
+    void validate(Ast::ArrayId& node);
     void validate(Ast::IdRef& node);
-    // void validate(Ast::ArrayAccess& node);
+    void validate(Ast::BinaryExpr& node);
+    void validate(Ast::UnaryExpr& node);
+    void validate(Ast::PrintStmt& node);
+    void validate(Ast::IfStmt& node);
+    void validate(Ast::WhileStmt& node);
+    void validate(Ast::ForStmt& node);
+    void validate(Ast::ReturnStmt& node);
+    void validate(Ast::Assignment& node);
     void validate(Ast::Var& node);
     void validate(Ast::Routine& node);
-    void validate(Ast::Block& node);
-    void validate(Ast::Expr& node);
-    void validate(Ast::IfStmt& node);
+    void validate(Ast::RoutineCall& node);
+    void validate(Ast::ArrayType& node);
+    void validate(Ast::ArrayAccess& node);
+    void validate(Ast::RecordType& node);
 private:
     bool areTypesEqual(const std::shared_ptr<Ast::Type>& t1, const std::shared_ptr<Ast::Type>& t2);
     std::string stringifyType(const std::shared_ptr<Ast::Type>& t);

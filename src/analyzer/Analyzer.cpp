@@ -64,15 +64,37 @@ std::string Analyzer::stringifyType(const std::shared_ptr<Ast::Type>& t) {
 
 Ast::Decl* Analyzer::searchDeclaration(const std::string& id) {
     auto* block = &currBlock_;
-    while (block) {
+    while (*block) {
         auto it = (*block)->declMap.find(id);
         if (it != (*block)->declMap.end()) {
             block = &currBlock_->parent;
             return &it->second;
         }
-        block = &currBlock_->parent;
+        block = &(*block)->parent;
     }
     return nullptr;
+}
+
+void Analyzer::validate(Ast::TypeRef& node) {
+
+}
+
+void Analyzer::validate(Ast::TypeDecl& node) {
+
+}
+
+void Analyzer::validate(Ast::Block& node) {
+    for (auto& unit: node.units) {
+        unit->validate(*this);
+    }
+}
+
+void Analyzer::validate(Ast::IntRange& node) {
+
+}
+
+void Analyzer::validate(Ast::ArrayId& node) {
+
 }
 
 // Check that identifier was declared
@@ -80,15 +102,110 @@ void Analyzer::validate(Ast::IdRef& node) {
     auto* decl = searchDeclaration(node.id);
     if (!decl) {
         saveError(
-            std::string("use of undeclared identifier: " ANSI_START ANSI_BOLD ANSI_APPLY) + node.id + ANSI_RESET,
+            "use of undeclared identifier: " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + node.id + ANSI_RESET,
             node.span
         );
         return;
     }
-    
+
     decl->validate(*this);
     if (node.next)
         node.next->validate(*this);
+}
+
+void Analyzer::validate(Ast::BinaryExpr& node) {
+    switch (node.code) {
+    case Ast::ExprEnum::Add:
+    case Ast::ExprEnum::Subtract:
+    case Ast::ExprEnum::Multiply:
+    case Ast::ExprEnum::Divide:
+    case Ast::ExprEnum::Modulo:
+    case Ast::ExprEnum::LESS_THAN:
+    case Ast::ExprEnum::LESS_OR_EQUAL:
+    case Ast::ExprEnum::MORE_THAN:
+    case Ast::ExprEnum::MORE_OR_EQUAL: {
+        auto& expr = static_cast<Ast::BinaryExpr&>(node);
+
+        expr.left->validate(*this);
+        if (!expr.left->type || expr.left->type->code == Ast::TypeEnum::ERROR)
+            return;
+        
+        expr.right->validate(*this);
+        if (!expr.right->type || expr.right->type->code == Ast::TypeEnum::ERROR)
+            return;
+
+        if ((expr.left->type->code != Ast::TypeEnum::Int && expr.left->type->code != Ast::TypeEnum::Real)
+            || (expr.right->type->code != Ast::TypeEnum::Int && expr.right->type->code != Ast::TypeEnum::Real)
+        ) {
+            saveError("binary operator used with incompatible types: " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
+                + stringifyType(expr.left->type)
+                + ANSI_RESET + "and " + ANSI_START ANSI_BOLD ANSI_APPLY
+                + stringifyType(expr.right->type) + ANSI_RESET,
+                expr.span
+            );
+        }
+
+        if (expr.left->known && expr.right->known)
+            expr.known = true;
+
+        break;
+    }
+    case Ast::ExprEnum::EQUAL:
+    case Ast::ExprEnum::UNEQUAL: {
+        auto& expr = static_cast<Ast::BinaryExpr&>(node);
+
+        expr.left->validate(*this);
+        if (expr.left->type->code == Ast::TypeEnum::ERROR)
+            return;
+        
+        expr.right->validate(*this);
+        if (expr.right->type->code == Ast::TypeEnum::ERROR)
+            return;
+
+        if (!areTypesEqual(expr.left->type, expr.right->type)) {
+            saveError("equality used with incompatible types: " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
+                + stringifyType(expr.left->type)
+                + ANSI_RESET + "and " + ANSI_START ANSI_BOLD ANSI_APPLY
+                + stringifyType(expr.right->type) + ANSI_RESET,
+                expr.span
+            );
+        }
+
+        if (expr.left->known && expr.right->known)
+            expr.known = true;
+
+        break;
+    }
+    }
+}
+
+void Analyzer::validate(Ast::UnaryExpr& node) {
+
+}
+
+void Analyzer::validate(Ast::PrintStmt& node) {
+    for (auto& arg: node.args)
+        arg->validate(*this);
+}
+
+void Analyzer::validate(Ast::IfStmt& node) {
+
+}
+
+void Analyzer::validate(Ast::WhileStmt& node) {
+
+}
+
+void Analyzer::validate(Ast::ForStmt& node) {
+
+}
+
+void Analyzer::validate(Ast::ReturnStmt& node) {
+
+}
+
+void Analyzer::validate(Ast::Assignment& node) {
+
 }
 
 void Analyzer::validate(Ast::Var& node) {
@@ -125,126 +242,56 @@ void Analyzer::validate(Ast::Routine& node) {
     currBlock_ = currBlock_->parent;
 }
 
-void Analyzer::validate(Ast::Block& node) {
-    for (auto& unit: node.units) {
-        unit->validate(*this);
+void Analyzer::validate(Ast::RoutineCall& node) {
+    auto& expr = static_cast<Ast::RoutineCall&>(node);
+    auto* decl = searchDeclaration(expr.routineId);
+    if (!decl) {
+        saveError("use of undeclared identifier: "
+            + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + expr.routineId + ANSI_RESET,
+            expr.span
+        );
+        return;
     }
+    if (!decl->isRoutine) {
+        saveError("attempt to call a non-routine identifier " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
+            + expr.routineId + ANSI_RESET,
+            expr.span
+        );
+        return;
+    }
+
+    auto& routine = static_cast<Ast::Routine&>(*decl);
+    if (routine.params.size() != expr.args.size()) {
+        saveError("routine call argument count mismatch", expr.span);
+    }
+    for (size_t i = 0; i < routine.params.size(); ++i) {
+        if (!areTypesEqual(routine.params[i]->type, expr.args[i]->type)) {
+            saveError(std::string("in routine call to ") + ANSI_START ANSI_BOLD ANSI_APPLY + routine.id
+            + ANSI_RESET + ": argument #" + std::to_string(i) + " type mismatch\n\t"
+            + "expected: " + stringifyType(routine.params[i]->type)
+            + "\n\tbut got: " + stringifyType(expr.args[i]->type),
+            expr.args[i]->span
+        );
+        }
+    }
+    if (!routine.body) {
+        saveError("use of routine with no body: " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
+            + expr.routineId + ANSI_RESET,
+            expr.span
+        );
+    }
+
+    node.type = routine.retType;
 }
 
-void Analyzer::validate(Ast::Expr& node) {
-    switch (node.code) {
-    case Ast::ExprEnum::BoolLiteral: { node.type->code = Ast::TypeEnum::Bool; node.known = true; break; }
-    case Ast::ExprEnum::IntLiteral: { node.type->code = Ast::TypeEnum::Int; node.known = true; break; }
-    case Ast::ExprEnum::RealLiteral: { node.type->code = Ast::TypeEnum::Real; node.known = true; break; }
-    case Ast::ExprEnum::IdRef: { validate(static_cast<Ast::IdRef&>(node)); break; }
-    case Ast::ExprEnum::ArrayAccess: { validate(static_cast<Ast::ArrayAccess&>(node)); break; }
-    case Ast::ExprEnum::Add:
-    case Ast::ExprEnum::Subtract:
-    case Ast::ExprEnum::Multiply:
-    case Ast::ExprEnum::Divide:
-    case Ast::ExprEnum::Modulo:
-    case Ast::ExprEnum::LESS_THAN:
-    case Ast::ExprEnum::LESS_OR_EQUAL:
-    case Ast::ExprEnum::MORE_THAN:
-    case Ast::ExprEnum::MORE_OR_EQUAL: {
-        auto& expr = static_cast<Ast::BinaryExpr&>(node);
+void Analyzer::validate(Ast::ArrayType& node) {
 
-        validate(*expr.left);
-        if (expr.left->type->code == Ast::TypeEnum::ERROR)
-            return;
-        
-        validate(*expr.right);
-        if (expr.right->type->code == Ast::TypeEnum::ERROR)
-            return;
-
-        if ((expr.left->type->code != Ast::TypeEnum::Int && expr.left->type->code != Ast::TypeEnum::Real)
-            || (expr.right->type->code != Ast::TypeEnum::Int && expr.right->type->code != Ast::TypeEnum::Real)
-        ) {
-            saveError("binary operator used with incompatible types: " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
-                + stringifyType(expr.left->type)
-                + ANSI_RESET + "and " + ANSI_START ANSI_BOLD ANSI_APPLY
-                + stringifyType(expr.right->type) + ANSI_RESET,
-                expr.span
-            );
-        }
-
-        if (expr.left->known && expr.right->known)
-            expr.known = true;
-
-        break;
-    }
-    case Ast::ExprEnum::EQUAL:
-    case Ast::ExprEnum::UNEQUAL: {
-        auto& expr = static_cast<Ast::BinaryExpr&>(node);
-
-        validate(*expr.left);
-        if (expr.left->type->code == Ast::TypeEnum::ERROR)
-            return;
-        
-        validate(*expr.right);
-        if (expr.right->type->code == Ast::TypeEnum::ERROR)
-            return;
-
-        if (!areTypesEqual(expr.left->type, expr.right->type)) {
-            saveError("equality used with incompatible types: " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
-                + stringifyType(expr.left->type)
-                + ANSI_RESET + "and " + ANSI_START ANSI_BOLD ANSI_APPLY
-                + stringifyType(expr.right->type) + ANSI_RESET,
-                expr.span
-            );
-        }
-
-        if (expr.left->known && expr.right->known)
-            expr.known = true;
-
-        break;
-    }
-    case Ast::ExprEnum::RoutineCall: {
-        auto& expr = static_cast<Ast::RoutineCall&>(node);
-        auto* decl = searchDeclaration(expr.routineId);
-        if (!decl) {
-            saveError("use of undeclared identifier: "
-                + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + expr.routineId + ANSI_RESET,
-                expr.span
-            );
-            return;
-        }
-        if (!decl->isRoutine) {
-            saveError("attempt to call a non-routine identifier " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
-                + expr.routineId + ANSI_RESET,
-                expr.span
-            );
-            return;
-        }
-
-        auto& routine = static_cast<Ast::Routine&>(*decl);
-        if (routine.params.size() != expr.args.size()) {
-            saveError("routine call argument count mismatch", expr.span);
-        }
-        for (size_t i = 0; i < routine.params.size(); ++i) {
-            if (!areTypesEqual(routine.params[i]->type, expr.args[i]->type)) {
-                saveError(std::string("in routine call to ") + ANSI_START ANSI_BOLD ANSI_APPLY + routine.id
-                + ANSI_RESET + ": argument #" + std::to_string(i) + " type mismatch\n\t"
-                + "expected: " + stringifyType(routine.params[i]->type)
-                + "\n\tbut got: " + stringifyType(expr.args[i]->type),
-                expr.args[i]->span
-            );
-            }
-        }
-        if (!routine.body) {
-            saveError("use of routine with no body: " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
-                + expr.routineId + ANSI_RESET,
-                expr.span
-            );
-        }
-
-        node.type = routine.retType;
-
-        break;
-    }
-    }
 }
 
-void Analyzer::validate(Ast::IfStmt& node) {
+void Analyzer::validate(Ast::ArrayAccess& node) {
+
+}
+
+void Analyzer::validate(Ast::RecordType& node) {
 
 }
