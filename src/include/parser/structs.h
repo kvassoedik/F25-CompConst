@@ -48,9 +48,8 @@ struct TypeRef final : public Type {
     TypeRef(Tokens::Span span, std::string id)
         : Type(span, TypeEnum::RESOLVABLE), id(std::move(id)) {}
     
-    #if AST_DEBUG_ON
-        AST_DEBUGTREE_PRINT_METHOD
-    #endif
+    AST_DEBUGTREE_PRINT_METHOD
+    AST_VALIDATE_METHOD
 public:
     std::string id;
 };
@@ -59,9 +58,8 @@ struct TypeDecl final : public Decl {
     TypeDecl(Tokens::Span span, std::string id)
         : Decl(span, std::move(id)) {}
 
-    #if AST_DEBUG_ON
-        AST_DEBUGTREE_PRINT_METHOD
-    #endif
+    AST_DEBUGTREE_PRINT_METHOD
+    AST_VALIDATE_METHOD
 public:
     std::shared_ptr<Type> type{nullptr};
 };
@@ -117,9 +115,7 @@ struct Expr : public Entity {
     Expr(Tokens::Span span, ExprEnum code, std::shared_ptr<Type> type = nullptr)
         : Entity(span), code(code), type(std::move(type)) {}
 
-    #if AST_DEBUG_ON
-        AST_DEBUGTREE_PRINT_METHOD
-    #endif
+    AST_DEBUGTREE_PRINT_METHOD
 public:
     std::shared_ptr<Type> type{nullptr};
     std::weak_ptr<Entity> parent;
@@ -131,28 +127,24 @@ struct RangeSpecifier : public Entity {
     RangeSpecifier(Tokens::Span span)
         : Entity(span) {}
 
-    #if AST_DEBUG_ON
-        AST_DEBUGTREE_PRINT_METHOD
-    #endif
+    AST_DEBUGTREE_PRINT_METHOD
 };
 struct IntRange final : public RangeSpecifier {
     IntRange(Tokens::Span span)
         : RangeSpecifier(span) {}
 
-    #if AST_DEBUG_ON
-        AST_DEBUGTREE_PRINT_METHOD
-    #endif
+    AST_DEBUGTREE_PRINT_METHOD
+    AST_VALIDATE_METHOD
 public:
     std::shared_ptr<Expr> start{nullptr};
     std::shared_ptr<Expr> end{nullptr};
 };
-struct ArrayId : public RangeSpecifier {
+struct ArrayId final : public RangeSpecifier {
     ArrayId(Tokens::Span span)
         : RangeSpecifier(span) {}
 
-    #if AST_DEBUG_ON
-        AST_DEBUGTREE_PRINT_METHOD
-    #endif
+    AST_DEBUGTREE_PRINT_METHOD
+    AST_VALIDATE_METHOD
 public:
     std::string id;
 };
@@ -161,9 +153,7 @@ struct ModifiablePrimary : public Expr {
     ModifiablePrimary(Tokens::Span span)
         : Expr(span) {}
 
-    #if AST_DEBUG_ON
-        AST_DEBUGTREE_PRINT_METHOD
-    #endif
+    AST_DEBUGTREE_PRINT_METHOD
 public:
     std::shared_ptr<ModifiablePrimary> next{nullptr};
 };
@@ -174,9 +164,7 @@ struct IdRef final: public ModifiablePrimary {
             code = ExprEnum::IdRef;
         }
 
-    #if AST_DEBUG_ON
-        AST_DEBUGTREE_PRINT_METHOD
-    #endif
+    AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
 public:
     std::string id;
@@ -187,9 +175,7 @@ struct BoolLiteral final: public Expr {
     BoolLiteral(Tokens::Span span, bool val)
         : Expr(span, ExprEnum::BoolLiteral), val(val) {}
 
-    #if AST_DEBUG_ON
-        AST_DEBUGTREE_PRINT_METHOD
-    #endif
+    AST_DEBUGTREE_PRINT_METHOD
 public:
     bool val;
 };
@@ -197,9 +183,7 @@ struct IntLiteral final: public Expr {
     IntLiteral(Tokens::Span span, long val)
         : Expr(span, ExprEnum::IntLiteral), val(val) {}
 
-    #if AST_DEBUG_ON
-        AST_DEBUGTREE_PRINT_METHOD
-    #endif
+    AST_DEBUGTREE_PRINT_METHOD
 public:
     long val;
 };
@@ -207,9 +191,7 @@ struct RealLiteral final: public Expr {
     RealLiteral(Tokens::Span span, double val)
         : Expr(span, ExprEnum::RealLiteral), val(val) {}
 
-    #if AST_DEBUG_ON
-        AST_DEBUGTREE_PRINT_METHOD
-    #endif
+    AST_DEBUGTREE_PRINT_METHOD
 public:
     double val;
 };
@@ -218,9 +200,8 @@ struct BinaryExpr final: public Expr {
     BinaryExpr(Tokens::Span span, ExprEnum code)
         : Expr(span, code) {}
 
-    #if AST_DEBUG_ON
-        AST_DEBUGTREE_PRINT_METHOD
-    #endif
+    AST_DEBUGTREE_PRINT_METHOD
+    AST_VALIDATE_METHOD
 public:
     std::shared_ptr<Expr> left{nullptr};
     std::shared_ptr<Expr> right{nullptr};
@@ -229,9 +210,8 @@ struct UnaryExpr final: public Expr {
     UnaryExpr(Tokens::Span span, ExprEnum code)
         : Expr(span, code) {}
 
-    #if AST_DEBUG_ON
-        AST_DEBUGTREE_PRINT_METHOD
-    #endif
+    AST_DEBUGTREE_PRINT_METHOD
+    AST_VALIDATE_METHOD
 public:
     std::shared_ptr<Expr> val{nullptr};
 };
@@ -242,9 +222,8 @@ struct PrintStmt final : public Entity {
     PrintStmt(Tokens::Span span)
         : Entity(span) {}
 
-    #if AST_DEBUG_ON
-        AST_DEBUGTREE_PRINT_METHOD
-    #endif
+    AST_DEBUGTREE_PRINT_METHOD
+    AST_VALIDATE_METHOD
 public:
     std::vector<std::shared_ptr<Expr>> args;
 };
@@ -253,9 +232,8 @@ struct IfStmt final : public Entity {
     IfStmt(Tokens::Span span)
         : Entity(span) {}
 
-    #if AST_DEBUG_ON
-        AST_DEBUGTREE_PRINT_METHOD
-    #endif
+    AST_DEBUGTREE_PRINT_METHOD
+    AST_VALIDATE_METHOD
 public:
     std::shared_ptr<Expr> condition{nullptr};
     std::shared_ptr<Block> body{nullptr};
@@ -266,9 +244,8 @@ struct WhileStmt final : public Entity {
     WhileStmt(Tokens::Span span)
         : Entity(span) {}
 
-    #if AST_DEBUG_ON
-        AST_DEBUGTREE_PRINT_METHOD
-    #endif
+    AST_DEBUGTREE_PRINT_METHOD
+    AST_VALIDATE_METHOD
 public:
     std::shared_ptr<Expr> condition{nullptr};
     std::shared_ptr<Block> body{nullptr};
@@ -278,9 +255,8 @@ struct ForStmt final : public Entity {
     ForStmt(Tokens::Span span)
         : Entity(span) {}
 
-    #if AST_DEBUG_ON
-        AST_DEBUGTREE_PRINT_METHOD
-    #endif
+    AST_DEBUGTREE_PRINT_METHOD
+    AST_VALIDATE_METHOD
 public:
     std::string counterId;
     std::shared_ptr<RangeSpecifier> range{nullptr};
@@ -292,9 +268,8 @@ struct ReturnStmt final : public Entity {
     ReturnStmt(Tokens::Span span)
         : Entity(span) {}
 
-    #if AST_DEBUG_ON
-        AST_DEBUGTREE_PRINT_METHOD
-    #endif
+    AST_DEBUGTREE_PRINT_METHOD
+    AST_VALIDATE_METHOD
 public:
     std::shared_ptr<Expr> val{nullptr};
 };
@@ -303,9 +278,8 @@ struct Assignment final : public Entity {
     Assignment(Tokens::Span span)
         : Entity(span) {}
 
-    #if AST_DEBUG_ON
-        AST_DEBUGTREE_PRINT_METHOD
-    #endif
+    AST_DEBUGTREE_PRINT_METHOD
+    AST_VALIDATE_METHOD
 public:
     std::shared_ptr<ModifiablePrimary> left{nullptr};
     std::shared_ptr<Expr> val{nullptr};
@@ -317,9 +291,7 @@ struct Var final : public Decl {
     Var(Tokens::Span span, std::string id)
         : Decl(span, std::move(id)) {}
 
-    #if AST_DEBUG_ON
-        AST_DEBUGTREE_PRINT_METHOD
-    #endif
+    AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
 public:
     std::shared_ptr<Type> type{nullptr};
@@ -335,9 +307,7 @@ struct Routine final : public Decl {
             isRoutine = true;
         }
 
-    #if AST_DEBUG_ON
-        AST_DEBUGTREE_PRINT_METHOD
-    #endif
+    AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
 public:
     std::vector<std::shared_ptr<Var>> params;
@@ -349,9 +319,8 @@ struct RoutineCall final : public Expr {
     RoutineCall(Tokens::Span span, std::string routineId)
         : Expr(span, ExprEnum::RoutineCall), routineId(std::move(routineId)) {}
 
-    #if AST_DEBUG_ON
-        AST_DEBUGTREE_PRINT_METHOD
-    #endif
+    AST_DEBUGTREE_PRINT_METHOD
+    AST_VALIDATE_METHOD
 public:
     std::vector<std::shared_ptr<Expr>> args;
     std::string routineId;
@@ -363,9 +332,8 @@ struct ArrayType final: public Type {
     ArrayType(Tokens::Span span)
         : Type(span, TypeEnum::Array) {}
 
-    #if AST_DEBUG_ON
-        AST_DEBUGTREE_PRINT_METHOD
-    #endif
+    AST_DEBUGTREE_PRINT_METHOD
+    AST_VALIDATE_METHOD
 public:
     std::shared_ptr<Expr> size{nullptr};
     std::shared_ptr<Type> elemType{nullptr};
@@ -377,9 +345,8 @@ struct ArrayAccess final : public ModifiablePrimary {
             code = ExprEnum::ArrayAccess;
         }
 
-    #if AST_DEBUG_ON
-        AST_DEBUGTREE_PRINT_METHOD
-    #endif
+    AST_DEBUGTREE_PRINT_METHOD
+    AST_VALIDATE_METHOD
 public:
     std::shared_ptr<Expr> val{nullptr};
 };
@@ -390,9 +357,8 @@ struct RecordType final : public Type {
     RecordType(Tokens::Span span)
         : Type(span, TypeEnum::Record) {}
 
-    #if AST_DEBUG_ON
-        AST_DEBUGTREE_PRINT_METHOD
-    #endif
+    AST_DEBUGTREE_PRINT_METHOD
+    AST_VALIDATE_METHOD
 public:
     std::vector<std::shared_ptr<Var>> members;
 };

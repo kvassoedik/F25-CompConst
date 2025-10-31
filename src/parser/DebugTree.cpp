@@ -33,7 +33,7 @@ void DebugTree::newNode(std::shared_ptr<Ast::Entity> node) {
 
 void DebugTree::printAll() {
     std::cout << ANSI_START ANSI_GREEN ANSI_APPLY << std::string(28, '-') << " AST_DEBUG " << std::string(28, '-') << ANSI_RESET "\n";
-    for (size_t i = 1; i < nodes_.size(); i++) {
+    for (size_t i = 1; i < nodes_.size(); ++i) {
         while (!depthStack_.empty()) {
             auto [debugId, depth] = depthStack_.top();
             depthStack_.pop();
@@ -92,21 +92,6 @@ void DebugTree::print(Ast::Entity& node) {
 
 // ---------- Node-specific printing methods ----------
 
-// void print(Ast::Type& node) {
-//     std::string output;
-//     switch(node.code) {
-//         case TypeEnum::ERROR: {output = "<error>"; break;}
-//         case TypeEnum::RESOLVABLE: {output = "<processed>"; break;}
-//         case TypeEnum::Int: {output = "integer"; break;}
-//         case TypeEnum::Real: {output = "real"; break;}
-//         case TypeEnum::Bool: {output = "boolean"; break;}
-//         case TypeEnum::Array: {output = "array"; break;}
-//         case TypeEnum::Record: {output = "record"; break;}
-//         default: {output = "INVALID_" + std::to_string(static_cast<int>(node.code)); break;}
-//     }
-//     os_ << "Type:" << output << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
-// }
-
 void DebugTree::print(Ast::Block& node) {
     std::string sUnits, sDecls, sTypes;
 
@@ -141,9 +126,20 @@ void DebugTree::print(Ast::Block& node) {
 }
 
 // === Base / common ===
+
 void DebugTree::print(Ast::Type& node) {
-    os_ << "Type_base " << static_cast<int>(node.code)
-        << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
+    std::string output;
+    switch(node.code) {
+        case TypeEnum::ERROR: {output = "<error>"; break;}
+        case TypeEnum::RESOLVABLE: {output = "<processed>"; break;}
+        case TypeEnum::Int: {output = "integer"; break;}
+        case TypeEnum::Real: {output = "real"; break;}
+        case TypeEnum::Bool: {output = "boolean"; break;}
+        case TypeEnum::Array: {output = "array"; break;}
+        case TypeEnum::Record: {output = "record"; break;}
+        default: {output = "INVALID_" + std::to_string(static_cast<int>(node.code)); break;}
+    }
+    os_ << "Type:" << output << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 
 void DebugTree::print(Ast::TypeRef& node) {

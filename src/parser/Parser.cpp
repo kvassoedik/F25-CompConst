@@ -737,19 +737,31 @@ std::shared_ptr<Ast::Expr> Parser::parsePrimary() {
     switch (tk->type) {
     case TokenType::True: {
         tokens_.move();
-        return Ast::mk<Ast::BoolLiteral>(tk->span, true);
+        auto res = Ast::mk<Ast::BoolLiteral>(tk->span, true);
+        res->known = true;
+        res->type = baseTypes_[0];
+        return res;
     }
     case TokenType::False: {
         tokens_.move();
-        return Ast::mk<Ast::BoolLiteral>(tk->span, false);
+        auto res = Ast::mk<Ast::BoolLiteral>(tk->span, false);
+        res->known = true;
+        res->type = baseTypes_[0];
+        return res;
     }
     case TokenType::IntLiteral: {
         tokens_.move();
-        return Ast::mk<Ast::IntLiteral>(tk->span, static_cast<Tokens::IntTk*>(&*tk)->value);
+        auto res = Ast::mk<Ast::IntLiteral>(tk->span, static_cast<Tokens::IntTk*>(&*tk)->value);
+        res->known = true;
+        res->type = baseTypes_[1];
+        return res;
     }
     case TokenType::RealLiteral: {
         tokens_.move();
-        return Ast::mk<Ast::RealLiteral>(tk->span, static_cast<Tokens::RealTk*>(&*tk)->value);
+        auto res = Ast::mk<Ast::RealLiteral>(tk->span, static_cast<Tokens::RealTk*>(&*tk)->value);
+        res->known = true;
+        res->type = baseTypes_[2];
+        return res;
     }
     case TokenType::Not: {
         tokens_.move();
@@ -766,17 +778,23 @@ std::shared_ptr<Ast::Expr> Parser::parsePrimary() {
         if (opTk) {
             if (opTk->type == TokenType::IntLiteral) {
                 tokens_.move();
-                return Ast::mk<Ast::IntLiteral>(
+                auto res = Ast::mk<Ast::IntLiteral>(
                     Tokens::Span{tk->span.line, tk->span.start, opTk->span.end},
                     static_cast<Tokens::IntTk*>(&*opTk)->value * (tk->type == TokenType::MINUS ? -1 : 1)
                 );
+                res->known = true;
+                res->type = baseTypes_[1];
+                return res;
             }
             if (opTk->type == TokenType::RealLiteral) {
                 tokens_.move();
-                return Ast::mk<Ast::RealLiteral>(
+                auto res = Ast::mk<Ast::RealLiteral>(
                     Tokens::Span{tk->span.line, tk->span.start, opTk->span.end},
                     static_cast<Tokens::RealTk*>(&*opTk)->value * (tk->type == TokenType::MINUS ? -1 : 1)
                 );
+                res->known = true;
+                res->type = baseTypes_[2];
+                return res;
             }
             if (opTk->type == TokenType::Identifier) {
                 auto&& operand = parsePrimary();

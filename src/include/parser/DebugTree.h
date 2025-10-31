@@ -26,6 +26,7 @@ public:
     void pushPrint(unsigned long debugId);
 
     // ---------- Node-specific printing methods ----------
+    
     void print(Ast::Entity& node);
     void print(Ast::Type& node);
     void print(Ast::Expr& node);
