@@ -74,8 +74,8 @@ struct Block final : public Entity {
     AST_VALIDATE_METHOD
 public:
     std::list<std::shared_ptr<Entity>> units;
-    std::unordered_map<std::string, std::shared_ptr<Decl>> declMap;
-    std::unordered_map<std::string, std::shared_ptr<Type>> typeMap;
+    std::unordered_map<std::string, Decl&> declMap;
+    std::unordered_map<std::string, Type&> typeMap;
     std::shared_ptr<Block> parent{nullptr};
 };
 
@@ -346,7 +346,7 @@ public:
 };
 
 struct RoutineCall final : public Expr {
-    RoutineCall(Tokens::Span span, std::shared_ptr<ModifiablePrimary> routineId)
+    RoutineCall(Tokens::Span span, std::string routineId)
         : Expr(span, ExprEnum::RoutineCall), routineId(std::move(routineId)) {}
 
     #if AST_DEBUG_ON
@@ -354,7 +354,7 @@ struct RoutineCall final : public Expr {
     #endif
 public:
     std::vector<std::shared_ptr<Expr>> args;
-    std::shared_ptr<ModifiablePrimary> routineId{nullptr};
+    std::string routineId;
 };
 
 /************************************ Array ************************************/

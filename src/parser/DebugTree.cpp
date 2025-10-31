@@ -110,21 +110,22 @@ void DebugTree::print(Ast::Entity& node) {
 void DebugTree::print(Ast::Block& node) {
     std::string sUnits, sDecls, sTypes;
 
-    for (size_t i = 0; i < node.units.size(); ++i) {
-        sUnits += AST_DEBUG_PTR_TO_STR(node.units[i]);
-        if (i+1 < node.units.size())
-            sUnits += ",";
+    for (auto& unit: node.units) {
+        sUnits += AST_DEBUG_PTR_TO_STR(unit);
+        sUnits += ",";
     }
+    if (!sUnits.empty())
+        sUnits.pop_back();
 
     for (auto&& it = node.declMap.begin(); it != node.declMap.end(); ++it) {
-        sDecls += AST_DEBUG_PTR_TO_STR(it->second);
+        sDecls += AST_DEBUG_PTR_TO_STR((&it->second));
         sDecls += ",";
     }
     if (!sDecls.empty())
         sDecls.pop_back();
 
     for (auto&& it = node.typeMap.begin(); it != node.typeMap.end(); ++it) {
-        sTypes += AST_DEBUG_PTR_TO_STR(it->second);
+        sTypes += AST_DEBUG_PTR_TO_STR((&it->second));
         sTypes += ",";
     }
     if (!sTypes.empty())
@@ -307,7 +308,7 @@ void DebugTree::print(Ast::RoutineCall& node) {
         sArgs += AST_DEBUG_PTR_TO_STR(node.args[i]);
         if (i + 1 < node.args.size()) sArgs += ",";
     }
-    os_ << "RoutineCall " << AST_DEBUG_PTR_TO_STR(node.routineId)
+    os_ << "RoutineCall " << node.routineId
         << " (" << sArgs << ")"
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }

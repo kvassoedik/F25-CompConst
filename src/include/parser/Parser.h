@@ -44,9 +44,9 @@ private:
     std::shared_ptr<Ast::Expr> parseFactor();
     std::shared_ptr<Ast::Expr> parseSummand();
     std::shared_ptr<Ast::Expr> parsePrimary();
-    std::shared_ptr<Ast::ModifiablePrimary> parseModifiablePrimary();
+    std::shared_ptr<Ast::Expr> parseModifiablePrimaryOrRoutineCall();
     // If successful, invalidates the param!
-    std::shared_ptr<Ast::RoutineCall> parseRoutineCall(std::shared_ptr<Ast::ModifiablePrimary>& modif);
+    std::shared_ptr<Ast::RoutineCall> parseRoutineCall(std::shared_ptr<Tokens::IdentifierTk>& id);
 
     // No validation of 1st tk
     std::shared_ptr<Ast::PrintStmt> parsePrintStmt();
