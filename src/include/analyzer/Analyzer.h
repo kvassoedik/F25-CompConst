@@ -49,6 +49,6 @@ private:
 private:
     std::shared_ptr<FileReader> file_;
     std::shared_ptr<Ast::Block> root_{nullptr};
-    std::shared_ptr<Ast::Block> currBlock_{nullptr};
+    Ast::Block* currBlock_;
     Reporter reporter_{file_};
 };

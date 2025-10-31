@@ -7,8 +7,8 @@ int Analyzer::configure(int* argc, char** argv) {
 }
 
 void Analyzer::run() {
-    currBlock_ = root_;
-    currBlock_->validate(*this);
+    currBlock_ = root_.get();
+    validate(*currBlock_);
 }
 
 void Analyzer::saveError(std::string reason, Tokens::Span span) {
@@ -63,14 +63,13 @@ std::string Analyzer::stringifyType(const std::shared_ptr<Ast::Type>& t) {
 }
 
 Ast::Decl* Analyzer::searchDeclaration(const std::string& id) {
-    auto* block = &currBlock_;
-    while (*block) {
-        auto it = (*block)->declMap.find(id);
-        if (it != (*block)->declMap.end()) {
-            block = &currBlock_->parent;
+    auto* block = currBlock_;
+    while (block) {
+        auto it = block->declMap.find(id);
+        if (it != block->declMap.end())
             return &it->second;
-        }
-        block = &(*block)->parent;
+        
+        block = block->parent.get();
     }
     return nullptr;
 }
@@ -84,9 +83,11 @@ void Analyzer::validate(Ast::TypeDecl& node) {
 }
 
 void Analyzer::validate(Ast::Block& node) {
+    currBlock_ = &node;
     for (auto& unit: node.units) {
         unit->validate(*this);
     }
+    currBlock_ = currBlock_->parent.get();
 }
 
 void Analyzer::validate(Ast::IntRange& node) {
@@ -227,7 +228,7 @@ void Analyzer::validate(Ast::Var& node) {
 
 // Check that routine was declared in global scope
 void Analyzer::validate(Ast::Routine& node) {
-    if (currBlock_ != root_) {
+    if (currBlock_ != root_.get()) {
         saveError(
             "routine declarations are only allowed in global scope",
             node.span
@@ -236,10 +237,8 @@ void Analyzer::validate(Ast::Routine& node) {
     }
 
     // TODO no body
-    currBlock_ = node.body;
     currBlock_->declMap.emplace(node.id, node);
     node.body->validate(*this);
-    currBlock_ = currBlock_->parent;
 }
 
 void Analyzer::validate(Ast::RoutineCall& node) {
@@ -253,7 +252,7 @@ void Analyzer::validate(Ast::RoutineCall& node) {
         return;
     }
     if (!decl->isRoutine) {
-        saveError("attempt to call a non-routine identifier " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
+        saveError("attempt to call a variable that is not a routine " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
             + expr.routineId + ANSI_RESET,
             expr.span
         );
@@ -262,16 +261,21 @@ void Analyzer::validate(Ast::RoutineCall& node) {
 
     auto& routine = static_cast<Ast::Routine&>(*decl);
     if (routine.params.size() != expr.args.size()) {
-        saveError("routine call argument count mismatch", expr.span);
+        saveError("in routine call to " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + routine.id
+            + ANSI_RESET + ": argument count mismatch; expected "
+            + std::to_string(routine.params.size())
+            + ", but given " + std::to_string(expr.args.size()),
+            Tokens::Span{expr.span.line, expr.span.start, expr.span.start + expr.routineId.size()}
+        );
     }
-    for (size_t i = 0; i < routine.params.size(); ++i) {
+    for (size_t i = 0, num = std::min(routine.params.size(), expr.args.size()); i < num; ++i) {
         if (!areTypesEqual(routine.params[i]->type, expr.args[i]->type)) {
             saveError(std::string("in routine call to ") + ANSI_START ANSI_BOLD ANSI_APPLY + routine.id
-            + ANSI_RESET + ": argument #" + std::to_string(i) + " type mismatch\n\t"
-            + "expected: " + stringifyType(routine.params[i]->type)
-            + "\n\tbut got: " + stringifyType(expr.args[i]->type),
-            expr.args[i]->span
-        );
+                + ANSI_RESET + ": argument #" + std::to_string(i) + " type mismatch\n\t"
+                + "expected: " + stringifyType(routine.params[i]->type)
+                + "\n\tbut got: " + stringifyType(expr.args[i]->type),
+                expr.args[i]->span
+            );
         }
     }
     if (!routine.body) {
