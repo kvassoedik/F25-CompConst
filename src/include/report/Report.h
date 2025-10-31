@@ -38,7 +38,10 @@ public:
         sourceText[i] = '\0';
         bool lineTooLong = i == 56;
 
-        unsigned long maxArrowsLen = 56 - (msg.span.start - displayStart);
+        unsigned long maxArrowsLen = std::min(
+            56 - (msg.span.start - displayStart),
+            file_->lineStarts[msg.span.line] - msg.span.start-1 // clamp so that there are no more arrows than the length of this line
+        );
         std::cout << ANSI_START ANSI_BOLD ANSI_APPLY << file_->fileName() << ":" << msg.span.line << ":"
             << msg.span.start - lineStart + 1 << ANSI_RESET << ": " // Display column right before the start of the erroneous token
             << ANSI_START ANSI_RED ANSI_AND ANSI_BOLD ANSI_APPLY "error" ANSI_RESET ": " << std::move(msg.message) << "\n"
