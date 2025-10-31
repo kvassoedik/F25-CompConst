@@ -94,6 +94,11 @@ std::pair<bool, std::shared_ptr<Tokens::BaseTk>> Parser::parseEntity() {
         if (node) {
             tk = tokens_.get();
             if (!tk || tk->type != TokenType::ASSIGNMENT) {
+                if (node->code == Ast::ExprEnum::RoutineCall) {
+                    currBlock_->units.push_back(std::move(node));
+                    break;
+                }
+
                 if (tk) {
                     saveError("invalid statement", tk->span);
                     tokens_.move();
@@ -101,15 +106,15 @@ std::pair<bool, std::shared_ptr<Tokens::BaseTk>> Parser::parseEntity() {
                     saveError("invalid statement", file_->eof());
                 }
                 break;
+            } else {
+                // Extra report detail: cannot assign to a return value of routine call 
+                if (node->code == Ast::ExprEnum::RoutineCall) {
+                    saveError("illegal assignment to routine return value", node->span);
+                    break;
+                }
             }
 
             tokens_.move();
-
-            // Cannot assign to a return value of routine call 
-            if (node->code == Ast::ExprEnum::RoutineCall) {
-                saveError("illegal assignment to routine return value", node->span);
-                break;
-            }
 
             auto&& res = Ast::mk<Ast::Assignment>(node->span);
             res->left = std::move(reinterpret_cast<std::shared_ptr<Ast::ModifiablePrimary>&>(node));
