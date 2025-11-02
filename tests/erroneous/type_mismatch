@@ -1,0 +1,7 @@
+routine abc(x: integer, y: boolean): integer is
+    return x + y
+end
+
+routine main() is
+    abc(true)
+end

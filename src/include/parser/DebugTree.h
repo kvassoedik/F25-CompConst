@@ -38,7 +38,7 @@ public:
     void print(Ast::ArrayType& node);
     void print(Ast::RecordType& node);
     void print(Ast::IntRange& node);
-    void print(Ast::ArrayId& node);
+    void print(Ast::ArrayIdRange& node);
     void print(Ast::ArrayAccess& node);
     void print(Ast::ModifiablePrimary& node);
     void print(Ast::IdRef& node);
@@ -56,6 +56,7 @@ public:
     void print(Ast::Var& node);
     void print(Ast::Routine& node);
     void print(Ast::RoutineCall& node);
+    void print(Ast::RoutineType& node);
 
 private:
     void printImpl(const std::shared_ptr<Ast::Entity>& node, const std::string& prefix);

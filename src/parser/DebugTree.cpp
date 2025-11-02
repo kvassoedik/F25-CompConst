@@ -103,22 +103,24 @@ void DebugTree::print(Ast::Block& node) {
         sUnits.pop_back();
 
     for (auto&& it = node.declMap.begin(); it != node.declMap.end(); ++it) {
-        sDecls += AST_DEBUG_PTR_TO_STR((&it->second));
+        sDecls += AST_DEBUG_PTR_TO_STR(it->second);
         sDecls += ",";
     }
     if (!sDecls.empty())
         sDecls.pop_back();
 
     for (auto&& it = node.typeMap.begin(); it != node.typeMap.end(); ++it) {
-        sTypes += AST_DEBUG_PTR_TO_STR((&it->second));
+        sTypes += AST_DEBUG_PTR_TO_STR(it->second);
         sTypes += ",";
     }
     if (!sTypes.empty())
         sTypes.pop_back();
     
     std::string pd(2, ' ');
+    auto lock = node.parent.lock();
+
     os_ << "Block {"
-        << newline_ << pd << "parent " << AST_DEBUG_PTR_TO_STR(node.parent)
+        << newline_ << pd << "parent " << AST_DEBUG_PTR_TO_STR(lock)
         << newline_ << pd << "units: " << sUnits
         << newline_ << pd << "decls: " << sDecls
         << newline_ << pd << "types: " << sTypes
@@ -131,7 +133,7 @@ void DebugTree::print(Ast::Type& node) {
     std::string output;
     switch(node.code) {
         case TypeEnum::ERROR: {output = "<error>"; break;}
-        case TypeEnum::RESOLVABLE: {output = "<processed>"; break;}
+        case TypeEnum::REFERENCE: {output = "<processed>"; break;}
         case TypeEnum::Int: {output = "integer"; break;}
         case TypeEnum::Real: {output = "real"; break;}
         case TypeEnum::Bool: {output = "boolean"; break;}
@@ -143,7 +145,9 @@ void DebugTree::print(Ast::Type& node) {
 }
 
 void DebugTree::print(Ast::TypeRef& node) {
+    auto lock = node.ref.lock();
     os_ << "TypeRef " << node.id
+        << " #" << AST_DEBUG_PTR_TO_STR(lock)
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 
@@ -168,7 +172,7 @@ void DebugTree::print(Ast::IntRange& node) {
         << AST_DEBUG_PTR_TO_STR(node.end)
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
-void DebugTree::print(Ast::ArrayId& node) {
+void DebugTree::print(Ast::ArrayIdRange& node) {
     os_ << "ArrayId " << node.id
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
@@ -179,7 +183,9 @@ void DebugTree::print(Ast::ModifiablePrimary& node) {
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 void DebugTree::print(Ast::IdRef& node) {
+    auto lock = node.ref.lock();
     os_ << "IdRef " << node.id
+        << (lock ? (" #" + AST_DEBUG_PTR_TO_STR(lock)) : "")
         << (node.next ? " -> " + AST_DEBUG_PTR_TO_STR(node.next) : "")
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
@@ -288,13 +294,8 @@ void DebugTree::print(Ast::Var& node) {
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 void DebugTree::print(Ast::Routine& node) {
-    std::string sParams;
-    for (size_t i = 0; i < node.params.size(); ++i) {
-        sParams += AST_DEBUG_PTR_TO_STR(node.params[i]);
-        if (i + 1 < node.params.size()) sParams += ",";
-    }
-    os_ << "routine " << node.id << "(" << sParams << "): "
-        << AST_DEBUG_PTR_TO_STR(node.retType)
+    os_ << "routine " << node.id
+        << " " << AST_DEBUG_PTR_TO_STR(node.type)
         << " is " << AST_DEBUG_PTR_TO_STR(node.body)
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
@@ -306,6 +307,16 @@ void DebugTree::print(Ast::RoutineCall& node) {
     }
     os_ << "RoutineCall " << node.routineId
         << " (" << sArgs << ")"
+        << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
+}
+void DebugTree::print(Ast::RoutineType& node) {
+    std::string sParams;
+    for (size_t i = 0; i < node.params.size(); ++i) {
+        sParams += AST_DEBUG_PTR_TO_STR(node.params[i]);
+        if (i + 1 < node.params.size()) sParams += ",";
+    }
+    os_ << "Type:routine (" << sParams << "): "
+        << AST_DEBUG_PTR_TO_STR(node.retType)
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 

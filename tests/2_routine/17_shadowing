@@ -4,7 +4,7 @@ var myvar is 0
 routine func() is
     var myvar is 10.0
     print myvar
-    myvar = myvar / 2
+    myvar := myvar / 2
     print myvar
 end
 

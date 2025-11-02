@@ -42,7 +42,7 @@ int main(int argc, char **argv) {
     if (parser.configure(&argc, argv) != 0)
         return 3;
 
-    Analyzer analyzer(file);
+    Analyzer analyzer(file, parser);
     if (analyzer.configure(&argc, argv) != 0)
         return 3;
 
@@ -71,8 +71,6 @@ int main(int argc, char **argv) {
     if (parser.hasErrors())
         return 5;
 
-    auto astRoot = parser.getRoot();
-    analyzer.feed(std::move(astRoot));
     analyzer.run();
     if (analyzer.hasErrors())
         return 5;

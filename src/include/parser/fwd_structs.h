@@ -13,7 +13,7 @@ struct TypeDecl;
 struct ArrayType;
 struct RecordType;
 struct IntRange;
-struct ArrayId;
+struct ArrayIdRange;
 struct ArrayAccess;
 struct ModifiablePrimary;
 struct IdRef;
@@ -31,5 +31,6 @@ struct Assignment;
 struct Var;
 struct Routine;
 struct RoutineCall;
+struct RoutineType;
 
 }

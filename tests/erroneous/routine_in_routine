@@ -1,11 +1,11 @@
 routine main() is
     var x is 0
 
-    // routine abc(): integer is
-    //     routine xyz(): real => 2
+    /*routine abc(): integer is
+         routine xyz(): real => 2
 
-    //     return xyz()
-    // end
+         return xyz()
+    end*/
 
-    print y + abc(abc(), abc())
+    print y + abc()
 end

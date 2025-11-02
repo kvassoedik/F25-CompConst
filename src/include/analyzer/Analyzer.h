@@ -10,13 +10,14 @@ void validate(::Analyzer& analyzer)
 #define AST_VALIDATE_METHOD \
 void validate(::Analyzer& analyzer) final override { analyzer.validate(*this); }
 
+class Parser;
+
 class Analyzer final {
 public:
-    Analyzer(std::shared_ptr<FileReader> file)
-        : file_(std::move(file)) {}
+    Analyzer(std::shared_ptr<FileReader> file, Parser& parser)
+        : file_(std::move(file)), parser_(parser) {}
 
     int configure(int* argc, char** argv);
-    void feed(std::shared_ptr<Ast::Block> ast) { root_ = std::move(ast); };
     void run();
     bool hasErrors() const { return reporter_.hasErrors(); };
 
@@ -24,7 +25,7 @@ public:
     void validate(Ast::TypeDecl& node);
     void validate(Ast::Block& node);
     void validate(Ast::IntRange& node);
-    void validate(Ast::ArrayId& node);
+    void validate(Ast::ArrayIdRange& node);
     void validate(Ast::IdRef& node);
     void validate(Ast::BinaryExpr& node);
     void validate(Ast::UnaryExpr& node);
@@ -43,12 +44,17 @@ public:
 private:
     bool areTypesEqual(const std::shared_ptr<Ast::Type>& t1, const std::shared_ptr<Ast::Type>& t2);
     std::string stringifyType(const std::shared_ptr<Ast::Type>& t);
-    Ast::Decl* searchDeclaration(const std::string& id);
-
+    std::shared_ptr<Ast::Decl> searchDeclaration(const std::string& id);
+    
     void saveError(std::string reason, Tokens::Span span);
 private:
     std::shared_ptr<FileReader> file_;
     std::shared_ptr<Ast::Block> root_{nullptr};
     Ast::Block* currBlock_;
+    struct {
+        Ast::IdRef* head{nullptr};
+        std::shared_ptr<Ast::Type>* currType{nullptr};
+    } idRef_;
     Reporter reporter_{file_};
+    Parser& parser_;
 };

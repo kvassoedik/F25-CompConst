@@ -1,33 +1,33 @@
-var x: record var num is 0; var bool is false end
+var x: record var num: integer ; var bool: boolean end
 
 routine main() is
-	x.num := x.num - 1
-	x.bool := true xor false
-	x.bool := (main() + (false xor true)) + 1 * 2
+    x.num := x.num - 1
+    x.bool := true xor false
+    x.bool := (main() + (false xor true)) + 1 * 2
 
-	print x.num // -1
-	print x.bool // true
-	print x.bool xor true // false
-	print (x.bool and true) or false // true
-	print x.bool = false // false
+    print x.num // -1
+    print x.bool // true
+    print x.bool xor true // false
+    print (x.bool and true) or false // true
+    print x.bool = false // false
 
-	type House is record
-		var a is 1
-		var b is 2
-	end
+    type House is record
+		var a: integer
+        var b: real
+    end
 
-	var h: House
-	print h.a // 1
-	print h.b // 2
-	h.b := h.a
-	print h.b // 1
+    var h: House
+    print h.a // 1
+    print h.b // 2
+    h.b := h.a
+    print h.b // 1
 
-	// Nested records
-	var r: record
-		var r2: record
-			var x is 10
-		end
-		var y is 12
-	end
-	print r.r2.x // 10
+    // Nested records
+    var r: record
+        var r2: record
+            var x: integer
+        end
+        var y: integer
+    end
+    print r.r2.x // 10
 end

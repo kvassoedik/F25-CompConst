@@ -11,9 +11,10 @@ class Parser final {
 public:
     Parser(std::shared_ptr<FileReader> file)
         : file_(std::move(file)) {
-            baseTypes_[0] = Ast::mk<Ast::Type>(Tokens::Span{0,0,0}, Ast::TypeEnum::Bool);
-            baseTypes_[1] = Ast::mk<Ast::Type>(Tokens::Span{0,0,0}, Ast::TypeEnum::Int);
-            baseTypes_[2] = Ast::mk<Ast::Type>(Tokens::Span{0,0,0}, Ast::TypeEnum::Real);
+            baseTypes_.error = Ast::mk<Ast::Type>(Tokens::Span{0,0,0}, Ast::TypeEnum::ERROR);
+            baseTypes_.boolean = Ast::mk<Ast::Type>(Tokens::Span{0,0,0}, Ast::TypeEnum::Bool);
+            baseTypes_.integer = Ast::mk<Ast::Type>(Tokens::Span{0,0,0}, Ast::TypeEnum::Int);
+            baseTypes_.real = Ast::mk<Ast::Type>(Tokens::Span{0,0,0}, Ast::TypeEnum::Real);
 
             root_ = Ast::mk<Ast::Block>(Tokens::Span{.line = 1, .start = 0, .end = file_->size()});
             currBlock_ = root_;
@@ -23,7 +24,10 @@ public:
     void feed(TokenList tokens) { tokens_ = std::move(tokens); }
     void run();
     bool hasErrors() const { return reporter_.hasErrors(); }
-    const std::shared_ptr<Ast::Block>& getRoot() const noexcept { return root_; } 
+    const std::shared_ptr<Ast::Block>& getRoot() const noexcept { return root_; }
+
+    struct BaseTypes;
+    const BaseTypes& getBaseTypes() const noexcept { return baseTypes_; }
 private:
     bool nextNode();
     void saveError(std::string reason, Tokens::Span span);
@@ -72,7 +76,9 @@ private:
     std::shared_ptr<Ast::Block> root_;
     std::shared_ptr<Ast::Block> currBlock_;
     std::shared_ptr<Tokens::BaseTk> startTk_;
-    std::shared_ptr<Ast::Type> baseTypes_[3];
+    struct BaseTypes {
+        std::shared_ptr<Ast::Type> error, boolean, integer, real;
+    } baseTypes_;
 
     Reporter reporter_{file_};
 };

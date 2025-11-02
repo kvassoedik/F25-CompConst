@@ -8,7 +8,7 @@
             "request": "launch",
             "cwd": "${workspaceRoot}",
             "preLaunchTask": "build",
-            "args": ["tests/0_basic/7_relation_expr"]
+            "args": ["tests/2_routine/17_shadowing"]
         }
     ]
 }

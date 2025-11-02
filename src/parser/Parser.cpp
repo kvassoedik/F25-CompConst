@@ -169,7 +169,7 @@ std::shared_ptr<Ast::Block> Parser::parseRoutineBody(Tokens::Span initSpan) {
     }
 
     finalizeCurrBlock();
-    currBlock_ = currBlock_->parent;
+    currBlock_ = currBlock_->parent.lock();
     return res;
 }
 
@@ -222,7 +222,7 @@ void Parser::parseIfBody(std::shared_ptr<Ast::IfStmt>& parent, Tokens::Span init
         parent->elseBody = currBlock_;
     else
         parent->body = currBlock_;
-    currBlock_ = currBlock_->parent;
+    currBlock_ = currBlock_->parent.lock();
 }
 
 std::shared_ptr<Ast::Routine> Parser::parseRoutine() {
@@ -246,6 +246,7 @@ std::shared_ptr<Ast::Routine> Parser::parseRoutine() {
         return nullptr;
     }
     tokens_.move();
+    auto&& type = Ast::mk<Ast::RoutineType>(tk->span);
 
     // Parse params
     {
@@ -257,7 +258,7 @@ std::shared_ptr<Ast::Routine> Parser::parseRoutine() {
             } else {
                 auto&& param = parseRoutineParam();
                 if (param)
-                    res->params.push_back(std::move(param));
+                    type->params.push_back(std::move(param));
                 
                 while ((nextParamTk = tokens_.get()) != nullptr) {
                     tk = std::move(nextParamTk);
@@ -286,7 +287,7 @@ std::shared_ptr<Ast::Routine> Parser::parseRoutine() {
     if (tk && tk->type == TokenType::COLON) {
         tokens_.move();
         auto&& returnType = parseType();
-        res->retType = returnType;
+        type->retType = returnType;
         res->span.end = tk->span.end;
     }
 
@@ -319,6 +320,7 @@ std::shared_ptr<Ast::Routine> Parser::parseRoutine() {
         }
     }
 
+    res->type = std::move(type);
     if (res->body)
         res->span.end = res->body->span.end;
     return res;
@@ -744,28 +746,28 @@ std::shared_ptr<Ast::Expr> Parser::parsePrimary() {
         tokens_.move();
         auto res = Ast::mk<Ast::BoolLiteral>(tk->span, true);
         res->known = true;
-        res->type = baseTypes_[0];
+        res->type = baseTypes_.boolean;
         return res;
     }
     case TokenType::False: {
         tokens_.move();
         auto res = Ast::mk<Ast::BoolLiteral>(tk->span, false);
         res->known = true;
-        res->type = baseTypes_[0];
+        res->type = baseTypes_.boolean;
         return res;
     }
     case TokenType::IntLiteral: {
         tokens_.move();
         auto res = Ast::mk<Ast::IntLiteral>(tk->span, static_cast<Tokens::IntTk*>(&*tk)->value);
         res->known = true;
-        res->type = baseTypes_[1];
+        res->type = baseTypes_.integer;
         return res;
     }
     case TokenType::RealLiteral: {
         tokens_.move();
         auto res = Ast::mk<Ast::RealLiteral>(tk->span, static_cast<Tokens::RealTk*>(&*tk)->value);
         res->known = true;
-        res->type = baseTypes_[2];
+        res->type = baseTypes_.real;
         return res;
     }
     case TokenType::Not: {
@@ -788,7 +790,7 @@ std::shared_ptr<Ast::Expr> Parser::parsePrimary() {
                     static_cast<Tokens::IntTk*>(&*opTk)->value * (tk->type == TokenType::MINUS ? -1 : 1)
                 );
                 res->known = true;
-                res->type = baseTypes_[1];
+                res->type = baseTypes_.integer;
                 return res;
             }
             if (opTk->type == TokenType::RealLiteral) {
@@ -798,7 +800,7 @@ std::shared_ptr<Ast::Expr> Parser::parsePrimary() {
                     static_cast<Tokens::RealTk*>(&*opTk)->value * (tk->type == TokenType::MINUS ? -1 : 1)
                 );
                 res->known = true;
-                res->type = baseTypes_[2];
+                res->type = baseTypes_.real;
                 return res;
             }
             if (opTk->type == TokenType::Identifier) {
@@ -1079,7 +1081,7 @@ std::shared_ptr<Ast::RangeSpecifier> Parser::parseRangeSpecifier() {
 
     if (tk->type == TokenType::Identifier) {
         tokens_.move();
-        auto&& res = Ast::mk<Ast::ArrayId>(tk->span);
+        auto&& res = Ast::mk<Ast::ArrayIdRange>(tk->span);
         res->id = ID_STR(tk);
         return res;
     }

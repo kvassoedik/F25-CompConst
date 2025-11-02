@@ -10,7 +10,7 @@
 
 namespace Ast {
 
-struct Decl : public Entity {
+struct Decl : public Entity, public std::enable_shared_from_this<Decl> {
     Decl(Tokens::Span span, std::string id)
         : Entity(span), id(std::move(id)) {}
 
@@ -19,12 +19,13 @@ struct Decl : public Entity {
 #endif
 public:
     std::string id;
+    std::shared_ptr<Type> type{nullptr};
     bool isRoutine: 1 = false; // declarations can be either routine or var
 };
 
 enum class TypeEnum {
     ERROR,
-    RESOLVABLE,
+    REFERENCE,
 
     Int,
     Real,
@@ -46,12 +47,13 @@ public:
 
 struct TypeRef final : public Type {
     TypeRef(Tokens::Span span, std::string id)
-        : Type(span, TypeEnum::RESOLVABLE), id(std::move(id)) {}
+        : Type(span, TypeEnum::REFERENCE), id(std::move(id)) {}
     
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
 public:
     std::string id;
+    std::weak_ptr<TypeDecl> ref;
 };
 
 struct TypeDecl final : public Decl {
@@ -60,8 +62,6 @@ struct TypeDecl final : public Decl {
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
-public:
-    std::shared_ptr<Type> type{nullptr};
 };
 
 struct Block final : public Entity {
@@ -72,9 +72,9 @@ struct Block final : public Entity {
     AST_VALIDATE_METHOD
 public:
     std::list<std::shared_ptr<Entity>> units;
-    std::unordered_map<std::string, Decl&> declMap;
-    std::unordered_map<std::string, Type&> typeMap;
-    std::shared_ptr<Block> parent{nullptr};
+    std::unordered_map<std::string, std::shared_ptr<Ast::Decl>> declMap;
+    std::unordered_map<std::string, std::shared_ptr<TypeDecl>> typeMap;
+    std::weak_ptr<Block> parent;
 };
 
 /************************************ Expr ************************************/
@@ -139,8 +139,8 @@ public:
     std::shared_ptr<Expr> start{nullptr};
     std::shared_ptr<Expr> end{nullptr};
 };
-struct ArrayId final : public RangeSpecifier {
-    ArrayId(Tokens::Span span)
+struct ArrayIdRange final : public RangeSpecifier {
+    ArrayIdRange(Tokens::Span span)
         : RangeSpecifier(span) {}
 
     AST_DEBUGTREE_PRINT_METHOD
@@ -168,7 +168,7 @@ struct IdRef final: public ModifiablePrimary {
     AST_VALIDATE_METHOD
 public:
     std::string id;
-    std::shared_ptr<Decl> ref{nullptr};
+    std::weak_ptr<Decl> ref;
 };
 
 struct BoolLiteral final: public Expr {
@@ -294,9 +294,7 @@ struct Var final : public Decl {
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
 public:
-    std::shared_ptr<Type> type{nullptr};
     std::shared_ptr<Expr> val{nullptr};
-    bool initialized: 1 = false;
 };
 
 /************************************ Routine ************************************/
@@ -307,11 +305,10 @@ struct Routine final : public Decl {
             isRoutine = true;
         }
 
+    const std::shared_ptr<RoutineType>& getType() const noexcept { return (std::shared_ptr<RoutineType>&)(type); }
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
 public:
-    std::vector<std::shared_ptr<Var>> params;
-    std::shared_ptr<Type> retType{nullptr};
     std::shared_ptr<Block> body{nullptr};
 };
 
@@ -324,6 +321,16 @@ struct RoutineCall final : public Expr {
 public:
     std::vector<std::shared_ptr<Expr>> args;
     std::string routineId;
+};
+
+struct RoutineType final : public Type {
+    RoutineType(Tokens::Span span)
+        : Type(span, TypeEnum::Routine) {}
+
+    AST_DEBUGTREE_PRINT_METHOD
+public:
+    std::vector<std::shared_ptr<Var>> params;
+    std::shared_ptr<Type> retType{nullptr};
 };
 
 /************************************ Array ************************************/
