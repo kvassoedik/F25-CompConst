@@ -1014,7 +1014,7 @@ std::shared_ptr<Ast::ForStmt> Parser::parseForStmt() {
         );
         return nullptr;
     }
-    res->counterId = ID_STR(tk);
+    res->counter = Ast::mk<Ast::Var>(tk->span, ID_STR(tk));
 
     tk = tokens_.moveGet();
     if (!tk || tk->type != TokenType::In) {

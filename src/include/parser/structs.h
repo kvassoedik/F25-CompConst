@@ -1,6 +1,7 @@
 #pragma once
 
 #include "parser/Entity.h"
+#include "parser/Printer.h"
 #include "parser/DebugTree.h"
 #include <vector>
 #include <list>
@@ -41,6 +42,7 @@ struct Type : public Entity {
         : Entity(span), code(code) {}
 
     AST_DEBUGTREE_PRINT_METHOD
+    AST_PRINTTYPE_METHOD
 public:
     TypeEnum code;
 };
@@ -50,6 +52,7 @@ struct TypeRef final : public Type {
         : Type(span, TypeEnum::REFERENCE), id(std::move(id)) {}
     
     AST_DEBUGTREE_PRINT_METHOD
+    AST_PRINTTYPE_METHOD
     AST_VALIDATE_METHOD
 public:
     std::string id;
@@ -147,6 +150,7 @@ struct ArrayIdRange final : public RangeSpecifier {
     AST_VALIDATE_METHOD
 public:
     std::string id;
+    std::weak_ptr<Var> ref;
 };
 
 struct ModifiablePrimary : public Expr {
@@ -258,7 +262,7 @@ struct ForStmt final : public Entity {
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
 public:
-    std::string counterId;
+    std::shared_ptr<Var> counter;
     std::shared_ptr<RangeSpecifier> range{nullptr};
     std::shared_ptr<Block> body{nullptr};
     bool reverse;
@@ -328,6 +332,7 @@ struct RoutineType final : public Type {
         : Type(span, TypeEnum::Routine) {}
 
     AST_DEBUGTREE_PRINT_METHOD
+    AST_PRINTTYPE_METHOD
 public:
     std::vector<std::shared_ptr<Var>> params;
     std::shared_ptr<Type> retType{nullptr};
@@ -340,6 +345,7 @@ struct ArrayType final: public Type {
         : Type(span, TypeEnum::Array) {}
 
     AST_DEBUGTREE_PRINT_METHOD
+    AST_PRINTTYPE_METHOD
     AST_VALIDATE_METHOD
 public:
     std::shared_ptr<Expr> size{nullptr};
@@ -365,6 +371,7 @@ struct RecordType final : public Type {
         : Type(span, TypeEnum::Record) {}
 
     AST_DEBUGTREE_PRINT_METHOD
+    AST_PRINTTYPE_METHOD
     AST_VALIDATE_METHOD
 public:
     std::vector<std::shared_ptr<Var>> members;
