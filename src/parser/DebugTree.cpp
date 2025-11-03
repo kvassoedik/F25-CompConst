@@ -146,8 +146,8 @@ void DebugTree::print(Ast::Type& node) {
 
 void DebugTree::print(Ast::TypeRef& node) {
     auto lock = node.ref.lock();
-    os_ << "TypeRef " << node.id
-        << " #" << AST_DEBUG_PTR_TO_STR(lock)
+    os_ << "TypeRef "
+        << AST_DEBUG_PTR_TO_STR(lock) << " " << node.id
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 
@@ -166,14 +166,16 @@ void DebugTree::print(Ast::RangeSpecifier& node) {
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 
-// === Ranges / ArrayId ===
+// === Ranges / ArrayIdRange ===
 void DebugTree::print(Ast::IntRange& node) {
     os_ << AST_DEBUG_PTR_TO_STR(node.start) << " .. "
         << AST_DEBUG_PTR_TO_STR(node.end)
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 void DebugTree::print(Ast::ArrayIdRange& node) {
-    os_ << "ArrayId " << node.id
+    auto lock = node.ref.lock();
+    os_ << "ArrayIdRange "
+        << (lock ? AST_DEBUG_PTR_TO_STR(lock) : node.id)
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 
@@ -184,8 +186,8 @@ void DebugTree::print(Ast::ModifiablePrimary& node) {
 }
 void DebugTree::print(Ast::IdRef& node) {
     auto lock = node.ref.lock();
-    os_ << "IdRef " << node.id
-        << (lock ? (" #" + AST_DEBUG_PTR_TO_STR(lock)) : "")
+    os_ << "IdRef "
+        << (lock ? AST_DEBUG_PTR_TO_STR(lock) : node.id)
         << (node.next ? " -> " + AST_DEBUG_PTR_TO_STR(node.next) : "")
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
@@ -270,7 +272,7 @@ void DebugTree::print(Ast::WhileStmt& node) {
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 void DebugTree::print(Ast::ForStmt& node) {
-    os_ << "for " << node.counterId
+    os_ << "for " << AST_DEBUG_PTR_TO_STR(node.counter)
         << " in " << AST_DEBUG_PTR_TO_STR(node.range)
         << (node.reverse ? " reverse " : " ")
         << "loop " << AST_DEBUG_PTR_TO_STR(node.body)

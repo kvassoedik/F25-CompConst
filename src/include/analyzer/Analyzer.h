@@ -2,6 +2,7 @@
 
 #include "FileReader.h"
 #include "parser/fwd_structs.h"
+#include "parser/Printer.h"
 #include "report/Report.h"
 #include <memory>
 
@@ -53,8 +54,10 @@ private:
     Ast::Block* currBlock_;
     struct {
         Ast::IdRef* head{nullptr};
-        std::shared_ptr<Ast::Type>* currType{nullptr};
+        Ast::ModifiablePrimary* prev;
+        const std::shared_ptr<Ast::Type>* currType;
     } idRef_;
     Reporter reporter_{file_};
+    Ast::Printer printer_;
     Parser& parser_;
 };

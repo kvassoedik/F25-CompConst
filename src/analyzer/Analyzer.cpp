@@ -1,6 +1,7 @@
 #include "analyzer/Analyzer.h"
 #include "parser/Parser.h"
 #include "utils/PrintingUtils.h"
+#include <sstream>
 
 int Analyzer::configure(int* argc, char** argv) {
     return 0;
@@ -60,7 +61,9 @@ bool Analyzer::areTypesEqual(const std::shared_ptr<Ast::Type>& t1, const std::sh
 }
 
 std::string Analyzer::stringifyType(const std::shared_ptr<Ast::Type>& t) {
-    return "_TODO_";
+    std::stringstream out;
+    t->printType(printer_, {.os = out});
+    return out.str();
 }
 
 std::shared_ptr<Ast::Decl> Analyzer::searchDeclaration(const std::string& id) {
@@ -114,12 +117,38 @@ void Analyzer::validate(Ast::Block& node) {
 }
 
 void Analyzer::validate(Ast::IntRange& node) {
-
+    if (node.start->type->code != Ast::TypeEnum::Int) {
+        saveError("start of iteration range is not of integer type; actual: "
+            + stringifyType(node.start->type),
+            node.start->span
+        );
+    }
+    if (node.end->type->code != Ast::TypeEnum::Int) {
+        saveError("end of iteration range is not of integer type; actual: "
+            + stringifyType(node.end->type),
+            node.end->span
+        );
+    }
 }
 
 void Analyzer::validate(Ast::ArrayIdRange& node) {
-    
+    auto decl = searchDeclaration(node.id);
+    if (!decl) {
+        saveError(
+            "use of undeclared identifier " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + node.id + ANSI_RESET,
+            node.span
+        );
+        return;
+    }
 
+    if (decl->type->code != Ast::TypeEnum::Array) {
+        saveError("object " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + node.id
+            + ANSI_RESET + " is not of array type; actual: " + stringifyType(decl->type),
+            node.span
+        );
+    }
+
+    node.ref = std::static_pointer_cast<Ast::Var>(decl);
 }
 
 // Check that identifier was declared
@@ -137,15 +166,38 @@ void Analyzer::validate(Ast::IdRef& node) {
         node.ref = decl;
         idRef_.head = &node;
         idRef_.currType = &decl->type;
+
+        if (node.next) {
+            idRef_.prev = &node;
+            node.next->validate(*this);
+        }
+        node.type = *idRef_.currType;
+        idRef_.head = nullptr;
     } else {
+        if ((*idRef_.currType)->code != Ast::TypeEnum::Record) {
+            idRef_.currType = &parser_.getBaseTypes().error;
+            saveError(
+                "object " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
+                + file_->extractSrc(idRef_.head->span.start, node.span.end) + ANSI_RESET
+                + " is not of record type; actual type: "
+                + ANSI_START ANSI_BOLD ANSI_APPLY + stringifyType(*idRef_.currType) + ANSI_RESET,
+                node.span
+            );
+            return;
+        }
+
         auto it = std::find_if(
             static_cast<Ast::RecordType&>(**idRef_.currType).members.begin(),
             static_cast<Ast::RecordType&>(**idRef_.currType).members.end(),
             [&node](std::shared_ptr<Ast::Var> var) { return var->id == node.id; }
         );
+
         if (it == static_cast<Ast::RecordType&>(**idRef_.currType).members.end()) {
-            idRef_.head = nullptr;
-            saveError("type " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
+            idRef_.currType = &parser_.getBaseTypes().error;
+            saveError(
+                "object " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
+                + file_->extractSrc(idRef_.head->span.start, idRef_.prev->span.end) + ANSI_RESET
+                + " of type " + ANSI_START ANSI_BOLD ANSI_APPLY
                 + stringifyType(*idRef_.currType) + ANSI_RESET + " does not have a field '"
                 + ANSI_START ANSI_BOLD ANSI_APPLY + node.id + ANSI_RESET + "'",
                 node.span
@@ -154,26 +206,10 @@ void Analyzer::validate(Ast::IdRef& node) {
         }
 
         idRef_.currType = &(*it)->type;
-    }
 
-    if (node.next) {
-        if ((*idRef_.currType)->code != Ast::TypeEnum::Record) {
-            saveError("object " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
-                + node.id + ANSI_RESET
-                + " is not of record type; actual type: " + stringifyType(*idRef_.currType),
-                node.span
-            );
-            return;
-        }
-
-        node.next->validate(*this);
-    } else {
-        try {
-            idRef_.head->type = *idRef_.currType;
-            idRef_.head = nullptr;
-        } catch(...) {
-            idRef_.head = nullptr;
-            throw std::runtime_error("exception when validating IdRef");
+        if (node.next) {
+            idRef_.prev = &node;
+            node.next->validate(*this);
         }
     }
 }
@@ -294,7 +330,10 @@ void Analyzer::validate(Ast::WhileStmt& node) {
 }
 
 void Analyzer::validate(Ast::ForStmt& node) {
-
+    node.body->declMap.emplace(node.counter->id, node.counter);
+    node.counter->type = parser_.getBaseTypes().integer;
+    node.range->validate(*this);
+    node.body->validate(*this);
 }
 
 void Analyzer::validate(Ast::ReturnStmt& node) {
@@ -317,8 +356,9 @@ void Analyzer::validate(Ast::Assignment& node) {
 
     if (node.left->type->code == Ast::TypeEnum::Array || node.left->type->code == Ast::TypeEnum::Record) {
         saveError("assignment type mismatch\n\texpected: "
-            + stringifyType(node.left->type)
-            + "\n\tbut got: " + stringifyType(node.val->type),
+            + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + stringifyType(node.left->type)
+            + ANSI_RESET + "\n\tbut got: "
+            + ANSI_START ANSI_BOLD ANSI_APPLY + stringifyType(node.val->type) + ANSI_RESET,
             node.val->span
         );
         return;
@@ -356,8 +396,9 @@ void Analyzer::validate(Ast::Var& node) {
             saveError(
                 "type mismatch in initialization of "
                 + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + node.id + ANSI_RESET
-                + "\n\texpected: " + stringifyType(node.type)
-                + "\n\tbut got: " + stringifyType(node.val->type),
+                + "\n\texpected: " + ANSI_START ANSI_BOLD ANSI_APPLY + stringifyType(node.type)
+                + ANSI_RESET + "\n\tbut got: "
+                + ANSI_START ANSI_BOLD ANSI_APPLY + stringifyType(node.val->type) + ANSI_RESET,
                 node.span
             );
             return;
@@ -437,17 +478,29 @@ void Analyzer::validate(Ast::ArrayType& node) {
 
 void Analyzer::validate(Ast::ArrayAccess& node) {
     if ((*idRef_.currType)->code != Ast::TypeEnum::Array) {
-        saveError("type " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
+        idRef_.currType = &parser_.getBaseTypes().error;
+        saveError(
+            "type " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
             + stringifyType(*idRef_.currType) + ANSI_RESET + "is not an array",
             node.span
         );
         return;
     }
+    idRef_.currType = &std::static_pointer_cast<Ast::ArrayType>(*idRef_.currType)->elemType;
 
-    node.val->validate(*this);
+    {
+        auto state = idRef_;
+        idRef_.head = nullptr;
+        node.val->validate(*this);
+        idRef_ = state;
+    }
     if (node.val->known) {
         // TODO
-        return;
+    }
+
+    if (node.next) {
+        idRef_.prev = &node;
+        node.next->validate(*this);
     }
 }
 
