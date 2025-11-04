@@ -68,7 +68,7 @@ private:
     class DepthComparator {
     public:
         bool operator() (DepthElem a, DepthElem b) {
-            return a.second <= b.second && a.first > b.first;
+            return a.second < b.second || (a.second == b.second && a.first > b.first);
         }
     };
 
