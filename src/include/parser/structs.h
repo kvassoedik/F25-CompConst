@@ -21,7 +21,8 @@ struct Decl : public Entity, public std::enable_shared_from_this<Decl> {
 public:
     std::string id;
     std::shared_ptr<Type> type{nullptr};
-    bool isRoutine: 1 = false; // declarations can be either routine or var
+    bool isRoutine{false}; // declarations can be either routine or var
+    bool everUsed{false};
 };
 
 enum class TypeEnum {
@@ -121,9 +122,8 @@ struct Expr : public Entity {
     AST_DEBUGTREE_PRINT_METHOD
 public:
     std::shared_ptr<Type> type{nullptr};
-    std::weak_ptr<Entity> parent;
     ExprEnum code;
-    bool known: 1 = false;
+    bool knownPrimitive{false};
 };
 
 struct RangeSpecifier : public Entity {
@@ -177,27 +177,42 @@ public:
 
 struct BoolLiteral final: public Expr {
     BoolLiteral(Tokens::Span span, bool val)
-        : Expr(span, ExprEnum::BoolLiteral), val(val) {}
+        : Expr(span, ExprEnum::BoolLiteral), val(val) {
+            knownPrimitive = true;
+        }
 
     AST_DEBUGTREE_PRINT_METHOD
 public:
     bool val;
+#if AST_DEBUG_ON
+    bool optimized{false};
+#endif
 };
 struct IntLiteral final: public Expr {
     IntLiteral(Tokens::Span span, long val)
-        : Expr(span, ExprEnum::IntLiteral), val(val) {}
+        : Expr(span, ExprEnum::IntLiteral), val(val) {
+            knownPrimitive = true;
+        }
 
     AST_DEBUGTREE_PRINT_METHOD
 public:
     long val;
+#if AST_DEBUG_ON
+    bool optimized{false};
+#endif
 };
 struct RealLiteral final: public Expr {
     RealLiteral(Tokens::Span span, double val)
-        : Expr(span, ExprEnum::RealLiteral), val(val) {}
+        : Expr(span, ExprEnum::RealLiteral), val(val) {
+            knownPrimitive = true;
+        }
 
     AST_DEBUGTREE_PRINT_METHOD
 public:
     double val;
+#if AST_DEBUG_ON
+    bool optimized{false};
+#endif
 };
 
 struct BinaryExpr final: public Expr {
@@ -299,6 +314,7 @@ struct Var final : public Decl {
     AST_VALIDATE_METHOD
 public:
     std::shared_ptr<Expr> val{nullptr};
+    bool knownPrimitive{false};
 };
 
 /************************************ Routine ************************************/

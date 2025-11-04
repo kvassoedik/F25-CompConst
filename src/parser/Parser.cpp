@@ -745,28 +745,24 @@ std::shared_ptr<Ast::Expr> Parser::parsePrimary() {
     case TokenType::True: {
         tokens_.move();
         auto res = Ast::mk<Ast::BoolLiteral>(tk->span, true);
-        res->known = true;
         res->type = baseTypes_.boolean;
         return res;
     }
     case TokenType::False: {
         tokens_.move();
         auto res = Ast::mk<Ast::BoolLiteral>(tk->span, false);
-        res->known = true;
         res->type = baseTypes_.boolean;
         return res;
     }
     case TokenType::IntLiteral: {
         tokens_.move();
         auto res = Ast::mk<Ast::IntLiteral>(tk->span, static_cast<Tokens::IntTk*>(&*tk)->value);
-        res->known = true;
         res->type = baseTypes_.integer;
         return res;
     }
     case TokenType::RealLiteral: {
         tokens_.move();
         auto res = Ast::mk<Ast::RealLiteral>(tk->span, static_cast<Tokens::RealTk*>(&*tk)->value);
-        res->known = true;
         res->type = baseTypes_.real;
         return res;
     }
@@ -789,7 +785,6 @@ std::shared_ptr<Ast::Expr> Parser::parsePrimary() {
                     Tokens::Span{tk->span.line, tk->span.start, opTk->span.end},
                     static_cast<Tokens::IntTk*>(&*opTk)->value * (tk->type == TokenType::MINUS ? -1 : 1)
                 );
-                res->known = true;
                 res->type = baseTypes_.integer;
                 return res;
             }
@@ -799,7 +794,6 @@ std::shared_ptr<Ast::Expr> Parser::parsePrimary() {
                     Tokens::Span{tk->span.line, tk->span.start, opTk->span.end},
                     static_cast<Tokens::RealTk*>(&*opTk)->value * (tk->type == TokenType::MINUS ? -1 : 1)
                 );
-                res->known = true;
                 res->type = baseTypes_.real;
                 return res;
             }

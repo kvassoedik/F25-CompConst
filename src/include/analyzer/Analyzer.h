@@ -44,12 +44,16 @@ public:
     void validate(Ast::ArrayAccess& node);
     void validate(Ast::RecordType& node);
 private:
+    bool isPrimitiveType(const std::shared_ptr<Ast::Type>& t);
     bool areTypesEqual(const std::shared_ptr<Ast::Type>& t1, const std::shared_ptr<Ast::Type>& t2);
     bool isErrorType(const std::shared_ptr<Ast::Type> type) const noexcept;
     std::string stringifyType(const std::shared_ptr<Ast::Type>& t);
     std::shared_ptr<Ast::Decl> searchDeclaration(const std::string& id);
-
+    std::shared_ptr<Ast::Expr> optimizeExpr(Ast::Expr& expr);
+    void invalidateKnownVarsInCurrBlock();
+    void invalidateKnownVarByRef(Ast::IdRef& node);
     void saveError(std::string reason, Tokens::Span span);
+    void removeUnusedDecls();
 private:
     std::shared_ptr<FileReader> file_;
     std::shared_ptr<Ast::Block> root_{nullptr};
@@ -64,4 +68,5 @@ private:
     Reporter reporter_{file_};
     Ast::Printer printer_;
     Parser& parser_;
+    bool deadCode_{false};
 };
