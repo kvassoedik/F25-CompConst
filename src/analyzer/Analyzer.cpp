@@ -11,6 +11,14 @@ void Analyzer::run() {
     root_ = parser_.getRoot();
     currBlock_ = root_.get();
     validate(*currBlock_);
+
+    for (auto& routine: undefinedRoutines_) {
+        saveError("routine " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
+            + routine.second->id + ANSI_RESET
+            + "has not been defined",
+            routine.second->span
+        );
+    }
 }
 
 void Analyzer::saveError(std::string reason, Tokens::Span span) {
@@ -59,6 +67,8 @@ bool Analyzer::areTypesEqual(const std::shared_ptr<Ast::Type>& t1, const std::sh
     
     return true;
 }
+
+bool Analyzer::isErrorType(const std::shared_ptr<Ast::Type> type) const noexcept { return type->code == Ast::TypeEnum::ERROR; }
 
 std::string Analyzer::stringifyType(const std::shared_ptr<Ast::Type>& t) {
     std::stringstream out;
@@ -313,7 +323,40 @@ void Analyzer::validate(Ast::BinaryExpr& node) {
 }
 
 void Analyzer::validate(Ast::UnaryExpr& node) {
+    switch (node.code) {
+    case Ast::ExprEnum::Negate: {
+        if (node.val->type->code != Ast::TypeEnum::Int && node.val->type->code != Ast::TypeEnum::Real) {
+            node.type = parser_.getBaseTypes().error;
+            saveError(
+                "unary minus applied to non-numeric type; actual: "
+                + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
+                + stringifyType(node.val->type) + ANSI_RESET,
+                node.val->span
+            );
+            return;
+        }
+        node.type = node.val->type;
+        
+        break;
+    }
+    case Ast::ExprEnum::Not: {
+        if (node.val->type->code != Ast::TypeEnum::Bool) {
+            node.type = parser_.getBaseTypes().error;
+            saveError(
+                "'not' applied to non-boolean type; actual: "
+                + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
+                + stringifyType(node.val->type) + ANSI_RESET,
+                node.val->span
+            );
+            return;
+        }
+        node.type = parser_.getBaseTypes().boolean;
 
+        break;
+    }
+    default:
+        throw std::runtime_error("invalid Ast::UnaryExpr.code " + std::to_string(static_cast<int>(node.code)));
+    }
 }
 
 void Analyzer::validate(Ast::PrintStmt& node) {
@@ -322,11 +365,15 @@ void Analyzer::validate(Ast::PrintStmt& node) {
 }
 
 void Analyzer::validate(Ast::IfStmt& node) {
-
+    node.condition->validate(*this);
+    node.body->validate(*this);
+    if (node.elseBody)
+        node.elseBody->validate(*this);
 }
 
 void Analyzer::validate(Ast::WhileStmt& node) {
-
+    node.condition->validate(*this);
+    node.body->validate(*this);
 }
 
 void Analyzer::validate(Ast::ForStmt& node) {
@@ -337,7 +384,46 @@ void Analyzer::validate(Ast::ForStmt& node) {
 }
 
 void Analyzer::validate(Ast::ReturnStmt& node) {
+    if (!currRoutine_) {
+        saveError("return statement outside of routine body", node.span);
+        return;
+    }
 
+    if (node.val) {
+        node.val->validate(*this);
+
+        if (!currRoutine_->getType()->retType) {
+            saveError(
+                "in routine " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + currRoutine_->id
+                + ANSI_RESET + ": return value specified, but routine does not return anything",
+                node.span
+            );
+            return;
+        }
+
+        if (
+            !isErrorType(currRoutine_->getType()->retType) && !isErrorType(node.val->type)
+            && !areTypesEqual(node.val->type, currRoutine_->getType()->retType)
+        ) {
+            saveError(
+                "in routine " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + currRoutine_->id
+                + ANSI_RESET + ": return value type mismatch\n\texpected: "
+                + ANSI_START ANSI_BOLD ANSI_APPLY + stringifyType(currRoutine_->getType()->retType)
+                + ANSI_RESET + "\n\tbut got: " + ANSI_START ANSI_BOLD ANSI_APPLY
+                + stringifyType(node.val->type) + ANSI_RESET,
+                node.span
+            );
+        }
+    } else {
+        if (currRoutine_->getType()->retType) {
+            saveError(
+                "in routine " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + currRoutine_->id
+                + ANSI_RESET + ": no value returned, but return type is " + ANSI_START ANSI_BOLD ANSI_APPLY
+                + stringifyType(currRoutine_->getType()->retType) + ANSI_RESET,
+                node.span
+            );
+        }
+    }
 }
 
 void Analyzer::validate(Ast::Assignment& node) {
@@ -380,6 +466,22 @@ void Analyzer::validate(Ast::Assignment& node) {
 }
 
 void Analyzer::validate(Ast::Var& node) {
+    auto it = currBlock_->declMap.find(node.id);
+    if (it == currBlock_->declMap.end())
+        currBlock_->declMap.emplace(node.id, node.shared_from_this());
+    else {
+        saveError(
+            "redefinition of identifier " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
+            + node.id + ANSI_RESET,
+            node.span
+        );
+        reporter_.report({
+            .level = CompileMsg::Level::Appendix,
+            .message = "previously defined here",
+            .span = it->second->span
+        });
+    }
+
     if (node.type) {
         node.type->validate(*this);
         if (node.type->code == Ast::TypeEnum::REFERENCE) {
@@ -406,8 +508,6 @@ void Analyzer::validate(Ast::Var& node) {
 
         node.type = node.val->type;
     }
-
-    currBlock_->declMap.emplace(node.id, node.shared_from_this());
 }
 
 // Check that routine was declared in global scope
@@ -420,9 +520,37 @@ void Analyzer::validate(Ast::Routine& node) {
         return;
     }
 
-    // TODO no body
-    currBlock_->declMap.emplace(node.id, node.shared_from_this());
+    if (!node.body) {
+        undefinedRoutines_.emplace(node.id, std::static_pointer_cast<Ast::Routine>(node.shared_from_this()));
+        return;
+    }
+
+    undefinedRoutines_.erase(node.id);
+
+    auto it = currBlock_->declMap.find(node.id);
+    if (it == currBlock_->declMap.end())
+        currBlock_->declMap.emplace(node.id, node.shared_from_this());
+    else {
+        saveError(
+            "redefinition of identifier " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
+            + node.id + ANSI_RESET,
+            node.span
+        );
+        reporter_.report({
+            .level = CompileMsg::Level::Appendix,
+            .message = "previously defined here",
+            .span = it->second->span
+        });
+    }
+
+    // set currBlock so that params are added into its declMap, not the outer one
+    currBlock_ = node.body.get();
+    for (auto& param: node.getType()->params)
+        param->validate(*this);
+
+    currRoutine_ = &node;
     node.body->validate(*this);
+    currRoutine_ = nullptr;
 }
 
 void Analyzer::validate(Ast::RoutineCall& node) {
@@ -453,11 +581,20 @@ void Analyzer::validate(Ast::RoutineCall& node) {
         );
     }
     for (size_t i = 0, num = std::min(routine.getType()->params.size(), expr.args.size()); i < num; ++i) {
-        if (!areTypesEqual(routine.getType()->params[i]->type, expr.args[i]->type)) {
-            saveError(std::string("in routine call to ") + ANSI_START ANSI_BOLD ANSI_APPLY + routine.id
+        expr.args[i]->validate(*this);
+
+        if (
+            !isErrorType(routine.getType()->params[i]->type)
+            && !isErrorType(expr.args[i]->type)
+            && !areTypesEqual(routine.getType()->params[i]->type, expr.args[i]->type)
+        ) {
+            saveError(
+                "in routine call to " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + routine.id
                 + ANSI_RESET + ": argument #" + std::to_string(i) + " type mismatch\n\t"
-                + "expected: " + stringifyType(routine.getType()->params[i]->type)
-                + "\n\tbut got: " + stringifyType(expr.args[i]->type),
+                + "expected: " + ANSI_START ANSI_BOLD ANSI_APPLY
+                + stringifyType(routine.getType()->params[i]->type) + ANSI_RESET
+                + "\n\tbut got: " + ANSI_START ANSI_BOLD ANSI_APPLY
+                + stringifyType(expr.args[i]->type) + ANSI_RESET,
                 expr.args[i]->span
             );
         }
@@ -470,9 +607,11 @@ void Analyzer::validate(Ast::RoutineCall& node) {
     }
 
     node.type = routine.getType()->retType;
+    node.ref = std::static_pointer_cast<Ast::Routine>(decl);
 }
 
 void Analyzer::validate(Ast::ArrayType& node) {
+    // TODO
     node.elemType->validate(*this);
 }
 

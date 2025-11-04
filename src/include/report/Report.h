@@ -42,9 +42,22 @@ public:
             56 - (msg.span.start - displayStart),
             file_->lineStarts[msg.span.line] - msg.span.start-1 // clamp so that there are no more arrows than the length of this line
         );
+
+        std::string title;
+        switch (msg.level) {
+        case CompileMsg::Level::Error: {
+            title = ANSI_START ANSI_RED ANSI_AND ANSI_BOLD ANSI_APPLY + std::string("error") + ANSI_RESET + ": ";
+            break;
+        }
+        case CompileMsg::Level::Warning: {
+            title = ANSI_START ANSI_YELLOW ANSI_AND ANSI_BOLD ANSI_APPLY + std::string("warning") + ANSI_RESET + ": ";
+            break;
+        }
+        }
+
         std::cout << ANSI_START ANSI_BOLD ANSI_APPLY << file_->fileName() << ":" << msg.span.line << ":"
             << msg.span.start - lineStart + 1 << ANSI_RESET << ": " // Display column right before the start of the erroneous token
-            << ANSI_START ANSI_RED ANSI_AND ANSI_BOLD ANSI_APPLY "error" ANSI_RESET ": " << std::move(msg.message) << "\n"
+            << title << std::move(msg.message) << "\n"
             << logger_.numberedWall(msg.span.line) << sourceText << (lineTooLong ? "..." : "") << "\n"
             << logger_.wall() << ANSI_START ANSI_RED ANSI_APPLY
             << logger_.arrows(

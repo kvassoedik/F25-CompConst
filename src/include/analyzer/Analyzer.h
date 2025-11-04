@@ -5,6 +5,7 @@
 #include "parser/Printer.h"
 #include "report/Report.h"
 #include <memory>
+#include <unordered_map>
 
 #define AST_VALIDATE_METHOD_SIGNATURE \
 void validate(::Analyzer& analyzer)
@@ -44,9 +45,10 @@ public:
     void validate(Ast::RecordType& node);
 private:
     bool areTypesEqual(const std::shared_ptr<Ast::Type>& t1, const std::shared_ptr<Ast::Type>& t2);
+    bool isErrorType(const std::shared_ptr<Ast::Type> type) const noexcept;
     std::string stringifyType(const std::shared_ptr<Ast::Type>& t);
     std::shared_ptr<Ast::Decl> searchDeclaration(const std::string& id);
-    
+
     void saveError(std::string reason, Tokens::Span span);
 private:
     std::shared_ptr<FileReader> file_;
@@ -57,6 +59,8 @@ private:
         Ast::ModifiablePrimary* prev;
         const std::shared_ptr<Ast::Type>* currType;
     } idRef_;
+    Ast::Routine* currRoutine_{nullptr};
+    std::unordered_map<std::string, std::shared_ptr<Ast::Routine>> undefinedRoutines_;
     Reporter reporter_{file_};
     Ast::Printer printer_;
     Parser& parser_;

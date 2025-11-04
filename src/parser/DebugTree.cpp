@@ -174,8 +174,9 @@ void DebugTree::print(Ast::IntRange& node) {
 }
 void DebugTree::print(Ast::ArrayIdRange& node) {
     auto lock = node.ref.lock();
-    os_ << "ArrayIdRange "
-        << (lock ? AST_DEBUG_PTR_TO_STR(lock) : node.id)
+    os_ << (!lock ? ANSI_START ANSI_RED ANSI_AND ANSI_BOLD ANSI_APPLY : "")
+        << "ArrayIdRange "
+        << (lock ? AST_DEBUG_PTR_TO_STR(lock): node.id + ANSI_RESET)
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 
@@ -186,8 +187,9 @@ void DebugTree::print(Ast::ModifiablePrimary& node) {
 }
 void DebugTree::print(Ast::IdRef& node) {
     auto lock = node.ref.lock();
-    os_ << "IdRef "
-        << (lock ? AST_DEBUG_PTR_TO_STR(lock) : node.id)
+    os_ << (!lock ? ANSI_START ANSI_RED ANSI_AND ANSI_BOLD ANSI_APPLY : "")
+        << "IdRef "
+        << (lock ? AST_DEBUG_PTR_TO_STR(lock) : node.id + ANSI_RESET)
         << (node.next ? " -> " + AST_DEBUG_PTR_TO_STR(node.next) : "")
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
@@ -307,7 +309,11 @@ void DebugTree::print(Ast::RoutineCall& node) {
         sArgs += AST_DEBUG_PTR_TO_STR(node.args[i]);
         if (i + 1 < node.args.size()) sArgs += ",";
     }
-    os_ << "RoutineCall " << node.routineId
+
+    auto lock = node.ref.lock();
+    os_ << (!lock ? ANSI_START ANSI_RED ANSI_AND ANSI_BOLD ANSI_APPLY : "")
+        << "RoutineCall "
+        << (lock ? AST_DEBUG_PTR_TO_STR(lock) : node.routineId+ ANSI_RESET)
         << " (" << sArgs << ")"
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }

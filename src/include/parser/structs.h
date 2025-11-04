@@ -325,6 +325,7 @@ struct RoutineCall final : public Expr {
 public:
     std::vector<std::shared_ptr<Expr>> args;
     std::string routineId;
+    std::weak_ptr<Routine> ref;
 };
 
 struct RoutineType final : public Type {
