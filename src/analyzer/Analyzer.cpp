@@ -225,36 +225,35 @@ void Analyzer::validate(Ast::IdRef& node) {
 }
 
 void Analyzer::validate(Ast::BinaryExpr& node) {
+    auto& expr = static_cast<Ast::BinaryExpr&>(node);
+    expr.left->validate(*this);
+    expr.right->validate(*this);
+    
+    if (!expr.left->type || expr.left->type->code == Ast::TypeEnum::ERROR
+        || !expr.right->type || expr.right->type->code == Ast::TypeEnum::ERROR)
+    {
+        expr.type = parser_.getBaseTypes().error;
+        return;
+    }
+
     switch (node.code) {
     case Ast::ExprEnum::Add:
     case Ast::ExprEnum::Subtract:
     case Ast::ExprEnum::Multiply:
     case Ast::ExprEnum::Divide:
-    case Ast::ExprEnum::Modulo:
-    case Ast::ExprEnum::LESS_THAN:
-    case Ast::ExprEnum::LESS_OR_EQUAL:
-    case Ast::ExprEnum::MORE_THAN:
-    case Ast::ExprEnum::MORE_OR_EQUAL: {
-        auto& expr = static_cast<Ast::BinaryExpr&>(node);
-        expr.left->validate(*this);
-        expr.right->validate(*this);
-
-        if (!expr.left->type || expr.left->type->code == Ast::TypeEnum::ERROR
-            || !expr.right->type || expr.right->type->code == Ast::TypeEnum::ERROR)
-        {
-            expr.type = parser_.getBaseTypes().error;
-            return;
-        }
-
+    case Ast::ExprEnum::Modulo: {
         if ((expr.left->type->code != Ast::TypeEnum::Int && expr.left->type->code != Ast::TypeEnum::Real)
             || (expr.right->type->code != Ast::TypeEnum::Int && expr.right->type->code != Ast::TypeEnum::Real)
         ) {
-            saveError("binary operator used with incompatible types: " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
+            expr.type = parser_.getBaseTypes().error;
+            saveError(
+                "binary operator used with incompatible types: " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
                 + stringifyType(expr.left->type)
                 + ANSI_RESET + "and " + ANSI_START ANSI_BOLD ANSI_APPLY
                 + stringifyType(expr.right->type) + ANSI_RESET,
                 expr.span
             );
+            return;
         }
 
         if (expr.left->type->code == Ast::TypeEnum::Real || expr.right->type->code == Ast::TypeEnum::Real)
@@ -270,20 +269,16 @@ void Analyzer::validate(Ast::BinaryExpr& node) {
     case Ast::ExprEnum::And:
     case Ast::ExprEnum::Or:
     case Ast::ExprEnum::Xor: {
-        auto& expr = static_cast<Ast::BinaryExpr&>(node);
-        expr.left->validate(*this);
-        expr.right->validate(*this);
-        
-        if (!expr.left->type || expr.left->type->code == Ast::TypeEnum::ERROR
-            || !expr.right->type || expr.right->type->code == Ast::TypeEnum::ERROR)
-        {
-            expr.type = parser_.getBaseTypes().error;
-            return;
-        }
-
-        // Attempt to cast to boolean
         if (expr.left->type->code != Ast::TypeEnum::Bool || expr.right->type->code != Ast::TypeEnum::Bool) {
-            saveError("arguments of binary operator cannot be casted to boolean", expr.span);
+            std::string op = (expr.code == Ast::ExprEnum::And ? "and"
+                : (expr.code == Ast::ExprEnum::Or ? "or" : "xor"));
+            saveError(
+                "arguments of operator '" + op + "' are not of boolean type;\n\tleft side: "
+                + ANSI_START ANSI_BOLD ANSI_APPLY + stringifyType(expr.left->type)
+                + ANSI_RESET + "\n\tright side: " + ANSI_START ANSI_BOLD ANSI_APPLY
+                + stringifyType(expr.right->type) + ANSI_RESET,
+                expr.span
+            );
             expr.type = parser_.getBaseTypes().error;
         }
 
@@ -291,19 +286,31 @@ void Analyzer::validate(Ast::BinaryExpr& node) {
 
         break;
     }
-    case Ast::ExprEnum::EQUAL:
-    case Ast::ExprEnum::UNEQUAL: {
-        auto& expr = static_cast<Ast::BinaryExpr&>(node);
-        expr.left->validate(*this);
-        expr.right->validate(*this);
-        
-        if (!expr.left->type || expr.left->type->code == Ast::TypeEnum::ERROR
-            || !expr.right->type || expr.right->type->code == Ast::TypeEnum::ERROR)
-        {
+    case Ast::ExprEnum::LESS_THAN:
+    case Ast::ExprEnum::LESS_OR_EQUAL:
+    case Ast::ExprEnum::MORE_THAN:
+    case Ast::ExprEnum::MORE_OR_EQUAL: {
+        if ((expr.left->type->code != Ast::TypeEnum::Int && expr.left->type->code != Ast::TypeEnum::Real)
+            || (expr.right->type->code != Ast::TypeEnum::Int && expr.right->type->code != Ast::TypeEnum::Real)
+        ) {
             expr.type = parser_.getBaseTypes().error;
+            saveError(
+                "binary operator used with incompatible types: " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
+                + stringifyType(expr.left->type)
+                + ANSI_RESET + "and " + ANSI_START ANSI_BOLD ANSI_APPLY
+                + stringifyType(expr.right->type) + ANSI_RESET,
+                expr.span
+            );
             return;
         }
 
+        expr.type = parser_.getBaseTypes().boolean;
+
+        if (expr.left->known && expr.right->known)
+            expr.known = true;
+    }
+    case Ast::ExprEnum::EQUAL:
+    case Ast::ExprEnum::UNEQUAL: {
         if (!areTypesEqual(expr.left->type, expr.right->type)) {
             saveError("equality used with incompatible types: " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
                 + stringifyType(expr.left->type)
@@ -323,6 +330,8 @@ void Analyzer::validate(Ast::BinaryExpr& node) {
 }
 
 void Analyzer::validate(Ast::UnaryExpr& node) {
+    node.val->validate(*this);
+
     switch (node.code) {
     case Ast::ExprEnum::Negate: {
         if (node.val->type->code != Ast::TypeEnum::Int && node.val->type->code != Ast::TypeEnum::Real) {
