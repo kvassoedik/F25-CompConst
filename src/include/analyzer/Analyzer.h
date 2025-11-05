@@ -2,22 +2,24 @@
 
 #include "FileReader.h"
 #include "parser/fwd_structs.h"
-#include "parser/Printer.h"
 #include "report/Report.h"
+#include "analyzer/Optimizer.h"
 #include <memory>
 #include <unordered_map>
 
 #define AST_VALIDATE_METHOD_SIGNATURE \
-void validate(::Analyzer& analyzer)
+void validate(::analyzer::Analyzer& analyzer)
 #define AST_VALIDATE_METHOD \
-void validate(::Analyzer& analyzer) final override { analyzer.validate(*this); }
+void validate(::analyzer::Analyzer& analyzer) final override { analyzer.validate(*this); }
 
 class Parser;
 
+namespace analyzer {
+
 class Analyzer final {
 public:
-    Analyzer(std::shared_ptr<FileReader> file, Parser& parser)
-        : file_(std::move(file)), parser_(parser) {}
+    Analyzer(std::shared_ptr<FileReader> file, Parser& parser, Optimizer& optimizer)
+        : file_(std::move(file)), parser_(parser), optimizer_(optimizer) {}
 
     int configure(int* argc, char** argv);
     void run();
@@ -44,16 +46,10 @@ public:
     void validate(Ast::ArrayAccess& node);
     void validate(Ast::RecordType& node);
 private:
-    bool isPrimitiveType(const std::shared_ptr<Ast::Type>& t);
-    bool areTypesEqual(const std::shared_ptr<Ast::Type>& t1, const std::shared_ptr<Ast::Type>& t2);
-    bool isErrorType(const std::shared_ptr<Ast::Type> type) const noexcept;
-    std::string stringifyType(const std::shared_ptr<Ast::Type>& t);
     std::shared_ptr<Ast::Decl> searchDeclaration(const std::string& id);
-    std::shared_ptr<Ast::Expr> optimizeExpr(Ast::Expr& expr);
     void invalidateKnownVarsInCurrBlock();
     void invalidateKnownVarByRef(Ast::IdRef& node);
     void saveError(std::string reason, Tokens::Span span);
-    void removeUnusedDecls();
 private:
     std::shared_ptr<FileReader> file_;
     std::shared_ptr<Ast::Block> root_{nullptr};
@@ -66,7 +62,9 @@ private:
     Ast::Routine* currRoutine_{nullptr};
     std::unordered_map<std::string, std::shared_ptr<Ast::Routine>> undefinedRoutines_;
     Reporter reporter_{file_};
-    Ast::Printer printer_;
     Parser& parser_;
+    Optimizer& optimizer_;
     bool deadCode_{false};
 };
+
+}

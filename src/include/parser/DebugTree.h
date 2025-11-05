@@ -9,10 +9,16 @@
 #include <vector>
 #include <queue>
 
+#define AST_DEBUGTREE_PRINT_METHOD_SIGNATURE
+#define AST_DEBUGTREE_PRINT_METHOD
+
 #if AST_DEBUG_ON
 
+#undef AST_DEBUGTREE_PRINT_METHOD_SIGNATURE
 #define AST_DEBUGTREE_PRINT_METHOD_SIGNATURE \
 void print(::Ast::DebugTree& debugTree)
+
+#undef AST_DEBUGTREE_PRINT_METHOD
 #define AST_DEBUGTREE_PRINT_METHOD \
 void print(::Ast::DebugTree& debugTree) override { debugTree.print(*this); }
 
@@ -63,12 +69,14 @@ private:
 private:
     std::vector<std::shared_ptr<Ast::Entity>> nodes_;
 
-    // pair {debugId, depth}
-    using DepthElem = std::pair<unsigned long, unsigned int>;
+    struct DepthElem {
+        unsigned long debugId;
+        unsigned int depth;
+    };
     class DepthComparator {
     public:
         bool operator() (DepthElem a, DepthElem b) {
-            return a.second < b.second || (a.second == b.second && a.first > b.first);
+            return a.depth < b.depth || (a.depth == b.depth && a.debugId > b.debugId);
         }
     };
 
@@ -77,8 +85,9 @@ private:
     std::string newline_;
     std::ostream& os_;
     unsigned long globalDebugId_{1};
-    bool depthIncrement_{false};
     unsigned int depth_{0};
+    bool depthIncrement_{false};
+    bool isCurrOrphan_{false};
 };
 
 // GLOBAL VARIABLE

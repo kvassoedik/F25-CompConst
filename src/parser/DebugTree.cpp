@@ -1,6 +1,8 @@
 #include "parser/DebugTree.h"
 #include "parser/Ast.h"
 
+#if AST_DEBUG_ON
+
 #define AST_DEBUG_PRINT_METHOD_IMPL_TAIL(span) \
 "   " ANSI_START ANSI_BLUE ANSI_APPLY << span << ANSI_RESET "\n"
 
@@ -35,17 +37,17 @@ void DebugTree::printAll() {
     std::cout << ANSI_START ANSI_GREEN ANSI_APPLY << std::string(28, '-') << " AST_DEBUG " << std::string(28, '-') << ANSI_RESET "\n";
     for (size_t i = 1; i < nodes_.size(); ++i) {
         while (!depthStack_.empty()) {
-            auto [debugId, depth] = depthStack_.top();
+            auto top = depthStack_.top();
             depthStack_.pop();
 
-            if (depth < depth_) {
+            if (top.depth < depth_) {
                 std::cout << ANSI_START ANSI_RED ANSI_APPLY "|\n" ANSI_RESET;
             }
-            depth_ = depth;
+            depth_ = top.depth;
 
             printImpl(
-                nodes_[debugId],
-                std::string(ANSI_START ANSI_GREEN ANSI_APPLY "[").append(std::to_string(debugId)).append("]  " ANSI_RESET)
+                nodes_[top.debugId],
+                std::string(ANSI_START) + (isCurrOrphan_ ? ANSI_RED : ANSI_GREEN) + ANSI_APPLY "[" + std::to_string(top.debugId) + "]  " + ANSI_RESET
             );
             if (depthIncrement_) {
                 depth_++;
@@ -56,6 +58,12 @@ void DebugTree::printAll() {
 
         if (alreadyDisplayed_.find(i) != alreadyDisplayed_.end())
             continue;
+
+        if (!isCurrOrphan_ && i > 5) {
+            isCurrOrphan_ = true;
+            std::cout << "\n" << ANSI_START ANSI_GREEN ANSI_APPLY << std::string(14, '-') << " ORPHAN NODES " << std::string(14, '-') << ANSI_RESET "\n";
+        }
+
         alreadyDisplayed_.emplace(i);
         printImpl(
             nodes_[i],
@@ -65,7 +73,7 @@ void DebugTree::printAll() {
 }
 
 void DebugTree::pushPrint(unsigned long debugId) {
-    if (debugId == 0 || alreadyDisplayed_.find(debugId) != alreadyDisplayed_.end())
+    if (alreadyDisplayed_.find(debugId) != alreadyDisplayed_.end())
         return;
     alreadyDisplayed_.emplace(debugId);
     depthStack_.emplace(debugId, depth_ + 1);
@@ -259,9 +267,9 @@ void DebugTree::print(Ast::PrintStmt& node) {
     std::string sArgs;
     for (size_t i = 0; i < node.args.size(); ++i) {
         sArgs += AST_DEBUG_PTR_TO_STR(node.args[i]);
-        if (i + 1 < node.args.size()) sArgs += ", ";
+        if (i + 1 < node.args.size()) sArgs += ",";
     }
-    os_ << "print(" << sArgs << ")"
+    os_ << "print " << sArgs
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 
@@ -353,3 +361,5 @@ void DebugTree::print(Ast::RecordType& node) {
     os_ << "record {" << sMembers << "}"
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
+
+#endif

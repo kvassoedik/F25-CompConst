@@ -15,6 +15,8 @@ add_library(${LIB_NAME}
     ${CMAKE_SOURCE_DIR}/parser/Printer.cpp
     ${CMAKE_SOURCE_DIR}/parser/DebugTree.cpp
     ${CMAKE_SOURCE_DIR}/analyzer/Analyzer.cpp
+    ${CMAKE_SOURCE_DIR}/analyzer/Optimizer.cpp
+    ${CMAKE_SOURCE_DIR}/analyzer/utils.cpp
 )
 
 target_include_directories(${LIB_NAME} PUBLIC ${CMAKE_SOURCE_DIR}/include)

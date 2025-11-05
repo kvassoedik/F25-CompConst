@@ -11,10 +11,10 @@ class Parser final {
 public:
     Parser(std::shared_ptr<FileReader> file)
         : file_(std::move(file)) {
-            baseTypes_.error = Ast::mk<Ast::Type>(Tokens::Span{0,0,0}, Ast::TypeEnum::ERROR);
-            baseTypes_.boolean = Ast::mk<Ast::Type>(Tokens::Span{0,0,0}, Ast::TypeEnum::Bool);
-            baseTypes_.integer = Ast::mk<Ast::Type>(Tokens::Span{0,0,0}, Ast::TypeEnum::Int);
-            baseTypes_.real = Ast::mk<Ast::Type>(Tokens::Span{0,0,0}, Ast::TypeEnum::Real);
+            baseTypes_.error = Ast::mk<Ast::Type>(Tokens::Span{1,0,0}, Ast::TypeEnum::ERROR);
+            baseTypes_.boolean = Ast::mk<Ast::Type>(Tokens::Span{1,0,0}, Ast::TypeEnum::Bool);
+            baseTypes_.integer = Ast::mk<Ast::Type>(Tokens::Span{1,0,0}, Ast::TypeEnum::Int);
+            baseTypes_.real = Ast::mk<Ast::Type>(Tokens::Span{1,0,0}, Ast::TypeEnum::Real);
 
             root_ = Ast::mk<Ast::Block>(Tokens::Span{.line = 1, .start = 0, .end = file_->size()});
             currBlock_ = root_;

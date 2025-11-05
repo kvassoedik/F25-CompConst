@@ -310,6 +310,7 @@ std::shared_ptr<Ast::Routine> Parser::parseRoutine() {
             auto&& retStmt = Ast::mk<Ast::ReturnStmt>(body->span);
             retStmt->val = std::move(parseExpr());
             body->units.push_back(std::move(retStmt));
+            body->parent = currBlock_;
             res->body = std::move(body);
         } else if (tk->type != TokenType::ENDLINE && tk->type != TokenType::SEMICOLON) {
             saveError(

@@ -22,6 +22,10 @@ int main(int argc, char **argv) {
             "       -h  - display help\n"
             "       -lx - configure Lexer\n"
             "           V    - configure log verbosity level [0-2]\n";
+            "       -O - configure Optimizer\n"
+            "           V    - enable specific logs\n";
+            "               comput    - compile-time computation optimizations\n";
+            "               unused    - removal of unused declarations\n";
 
             return 0;
         }
@@ -30,7 +34,7 @@ int main(int argc, char **argv) {
     char* fileName = argv[argc - 1];
     auto&& file = std::make_shared<FileReader>(fileName);
     if (!file->isOpen()) {
-        std::cerr << "Could not open a file " << argv[1] << "\n";
+        std::cerr << "Could not open a file " << fileName << "\n";
         return 2;
     }
 
@@ -42,7 +46,11 @@ int main(int argc, char **argv) {
     if (parser.configure(&argc, argv) != 0)
         return 3;
 
-    Analyzer analyzer(file, parser);
+    analyzer::Optimizer optimizer(file, parser);
+    if (optimizer.configure(&argc, argv) != 0)
+        return 3;
+
+    analyzer::Analyzer analyzer(file, parser, optimizer);
     if (analyzer.configure(&argc, argv) != 0)
         return 3;
 
