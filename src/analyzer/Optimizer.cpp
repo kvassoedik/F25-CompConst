@@ -46,9 +46,8 @@ void Optimizer::log(const Log& log) {
 
 shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
 // ------------------------ MACROS -----------------------------
-#define spc std::static_pointer_cast
 #define INT_REAL_CASE(_node_) \
-(_node_->code == ExprEnum::IntLiteral ? spc<IntLiteral>(_node_)->val : spc<RealLiteral>(_node_)->val)
+(_node_->code == ExprEnum::IntLiteral ? static_cast<IntLiteral&>(*_node_).val : static_cast<RealLiteral&>(*_node_).val)
 // -----------------------------------------------------
 
     if (isErrorType(expr.type) || config_.disabled)
@@ -172,10 +171,10 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
     auto areValuesEqual = [](BinaryExpr& e, shared_ptr<Expr> left, shared_ptr<Expr> right) {
         switch (e.type->code) {
         case TypeEnum::Bool: {
-            return spc<BoolLiteral>(left)->val == spc<BoolLiteral>(right)->val;
+            return static_cast<BoolLiteral&>(*left).val == static_cast<BoolLiteral&>(*right).val;
         }
         case TypeEnum::Int: {
-            return spc<IntLiteral>(left)->val == spc<IntLiteral>(right)->val;
+            return static_cast<IntLiteral&>(*left).val == static_cast<IntLiteral&>(*right).val;
         }
         case TypeEnum::Real: {
             return INT_REAL_CASE(left) == INT_REAL_CASE(right);
@@ -189,10 +188,12 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
 
     switch (expr.code) {
     case ExprEnum::IdRef: {
-        auto ref = std::static_pointer_cast<Var>(
-            static_cast<IdRef&>(expr).ref.lock()
-        );
-        if (!ref || !ref->knownPrimitive)
+        auto lock = static_cast<IdRef&>(expr).ref.lock();
+        if (!lock || lock->isRoutine)
+            break;
+
+        auto ref = static_cast<Var*>(lock.get());
+        if (!ref->knownPrimitive)
             break;
 
         if (config_.logs.computations)
@@ -255,7 +256,7 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
 
         auto res = mk<BoolLiteral>(
             Tokens::Span{e.span.line, e.span.start, e.span.start+1},
-            !std::static_pointer_cast<BoolLiteral>(opt)->val
+            !static_cast<BoolLiteral&>(*opt).val
         );
         res->type = parser_.getBaseTypes().boolean;
 #if AST_DEBUG_ON
@@ -266,7 +267,7 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
 #if AST_DEBUG_ON
                     std::string("[") + std::to_string(res->debugId) + "] " +
 #endif
-                    "computed: not " + std::string(boolToStr(std::static_pointer_cast<BoolLiteral>(opt)->val)), e.span});
+                    "computed: not " + std::string(boolToStr(static_cast<BoolLiteral&>(*opt).val)), e.span});
 
         return res;
     }
@@ -300,8 +301,8 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
     }
     case ExprEnum::Modulo: { auto op = [this](shared_ptr<Expr> a, shared_ptr<Expr> b) {
         if (config_.logs.computations)
-            log({"computing " + std::to_string(spc<IntLiteral>(a)->val) + " % " + std::to_string(spc<IntLiteral>(b)->val), a->span});
-        return spc<IntLiteral>(a)->val % spc<IntLiteral>(b)->val;
+            log({"computing " + std::to_string(static_cast<IntLiteral&>(*a).val) + " % " + std::to_string(static_cast<IntLiteral&>(*b).val), a->span});
+        return static_cast<IntLiteral&>(*a).val % static_cast<IntLiteral&>(*b).val;
         };
         return optimizeNumericBinary({op, nullptr});
     }
@@ -472,7 +473,7 @@ void Optimizer::removeUnusedDecls(Block& currBlock) {
 }
 
 Optimizer::AssignmentOptStatus Optimizer::optimizeAssignmentAway(Ast::Assignment& node) {
-    auto parent = std::static_pointer_cast<IdRef>(node.left)->ref.lock();
+    auto parent = static_cast<IdRef&>(*node.left).ref.lock();
     if (!parent)
         return AssignmentOptStatus::Skip;
 
