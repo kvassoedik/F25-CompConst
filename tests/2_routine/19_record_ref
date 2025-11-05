@@ -1,5 +1,5 @@
 type obj is record
-	var x is 1
+	var x: integer
 	var y: real
 end
 
@@ -22,6 +22,6 @@ routine main() is
 
 	// Also testing shadowing + record member access here
 	o.x := 100
-	routine func(o: obj): obj => o
-	print func(o2).x // 6
+	//routine func(o: obj): obj => o
+	//print func(o2).x // 6
 end

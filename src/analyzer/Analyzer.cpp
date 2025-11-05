@@ -32,11 +32,11 @@ void Analyzer::run() {
             saveError("'main' must be a routine", it->second->span);
             return;
         }
-        if (std::static_pointer_cast<RoutineType>(it->second->type)->retType) {
+        if (static_cast<RoutineType&>(*it->second->type).retType) {
             saveError("'main' routine cannot return anything", it->second->span);
             return;
         }
-        if (!std::static_pointer_cast<RoutineType>(it->second->type)->params.empty()) {
+        if (!static_cast<RoutineType&>(*it->second->type).params.empty()) {
             saveError("'main' routine cannot have parameters", it->second->span);
             return;
         }
@@ -130,7 +130,7 @@ void Analyzer::validate(IntRange& node) {
     node.start->validate(*this);
     if (node.start->type->code != TypeEnum::Int) {
         saveError("start of iteration range is not of integer type; actual: "
-            + stringifyType(node.start->type),
+            + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + stringifyType(node.start->type) + ANSI_RESET,
             node.start->span
         );
     } else {
@@ -141,7 +141,7 @@ void Analyzer::validate(IntRange& node) {
     node.end->validate(*this);
     if (node.end->type->code != TypeEnum::Int) {
         saveError("end of iteration range is not of integer type; actual: "
-            + stringifyType(node.end->type),
+            + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + stringifyType(node.end->type) + ANSI_RESET,
             node.end->span
         );
     } else {
@@ -196,9 +196,21 @@ void Analyzer::validate(IdRef& node) {
         idRef_.head = nullptr;
     } else {
         if ((*idRef_.currType)->code != TypeEnum::Record) {
+            if ((*idRef_.currType)->code == TypeEnum::Array
+                && node.id == "size")
+            {
+                idRef_.currType = &parser_.getBaseTypes().integer;
+                if (node.next) {
+                    idRef_.prev = &node;
+                    node.next->validate(*this);
+                }
+
+                return;
+            }
+
             saveError(
                 "object " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
-                + file_->extractSrc(idRef_.head->span.start, node.span.end) + ANSI_RESET
+                + file_->extractSrc(idRef_.head->span.start, idRef_.prev->span.end) + ANSI_RESET
                 + " is not of record type; actual type: "
                 + ANSI_START ANSI_BOLD ANSI_APPLY + stringifyType(*idRef_.currType) + ANSI_RESET,
                 node.span
@@ -212,7 +224,6 @@ void Analyzer::validate(IdRef& node) {
             static_cast<RecordType&>(**idRef_.currType).members.end(),
             [&node](std::shared_ptr<Var> var) { return var->id == node.id; }
         );
-
         if (it == static_cast<RecordType&>(**idRef_.currType).members.end()) {
             saveError(
                 "object " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
@@ -648,7 +659,19 @@ void Analyzer::validate(Routine& node) {
         return;
     }
 
-    node.type->validate(*this);
+    {
+        auto& retType = static_cast<RoutineType&>(*node.type).retType;
+        if (retType) {
+            retType->validate(*this);
+            if (retType->code == TypeEnum::REFERENCE) {
+                auto lock = static_cast<TypeRef&>(*retType).ref.lock();
+                if (lock)
+                    retType = lock->type;
+                else
+                    retType = parser_.getBaseTypes().error;
+            }
+        }
+    }
 
     auto it = currBlock_->declMap.find(node.id);
     if (it == currBlock_->declMap.end())
@@ -705,6 +728,7 @@ void Analyzer::validate(Routine& node) {
     node.body->validate(*this);
     currRoutine_ = nullptr;
 
+    // routine forwarding
     if (it != currBlock_->declMap.end()) {
         static_cast<Routine&>(*it->second).body = std::move(node.body);
         static_cast<Routine&>(*it->second).type = std::move(node.type);
@@ -876,9 +900,20 @@ void Analyzer::validate(RecordType& node) {
             );
         }
 
-        if (member->type)
+        if (member->type) {
             member->type->validate(*this);
-        if (member->val)
+            if (member->type->code == TypeEnum::REFERENCE) {
+                auto lock = static_cast<TypeRef&>(*member->type).ref.lock();
+                if (lock)
+                    member->type = lock->type;
+                else
+                    member->type = parser_.getBaseTypes().error;
+            }
+        }
+        if (member->val) {
+            if (!member->type)
+                member->type = parser_.getBaseTypes().error;
             saveError("record type members cannot have initializers", member->val->span);
+        }
     }
 }
