@@ -777,7 +777,7 @@ std::shared_ptr<Ast::Expr> Parser::parsePrimary() {
     case TokenType::Not: {
         tokens_.move();
         auto&& res = Ast::mk<Ast::UnaryExpr>(tk->span, Ast::ExprEnum::Not);
-        auto&& expr = parseExpr();
+        auto&& expr = parseFactor();
         res->val = std::move(expr);
         if (res->val)
             res->span.end = res->span.end;
