@@ -475,6 +475,7 @@ std::shared_ptr<Ast::Var> Parser::parseVarDecl() {
         return nullptr;
 
     if (tk->type != TokenType::Var) {
+        tokens_.move();
         saveError("Expected 'var' before new declaration", tk->span);
         return nullptr;
     }
