@@ -125,7 +125,7 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
 #if AST_DEBUG_ON
                     std::string("[") + std::to_string(res->debugId) + "] " +
 #endif
-                    "result: " + std::string(res->val ? "true" : "false"), e.span});
+                    "result: " + std::string(boolToStr(res->val)), e.span});
 
             return res;
         } else {
@@ -159,7 +159,7 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
 #if AST_DEBUG_ON
                     std::string("[") + std::to_string(res->debugId) + "] " +
 #endif
-                    "result: " + std::string(res->val ? "true" : "false"), e.span});
+                    "result: " + std::string(boolToStr(res->val)), e.span});
 
             return res;
         } else {
@@ -264,9 +264,9 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
         if (config_.logs.computations)
                 log({
 #if AST_DEBUG_ON
-                    std::string(" [") + std::to_string(res->debugId) + "] " +
+                    std::string("[") + std::to_string(res->debugId) + "] " +
 #endif
-                    "computed: not " + std::to_string(std::static_pointer_cast<BoolLiteral>(opt)->val), e.span});
+                    "computed: not " + std::string(boolToStr(std::static_pointer_cast<BoolLiteral>(opt)->val)), e.span});
 
         return res;
     }
@@ -335,21 +335,21 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
     }
     case ExprEnum::And: { auto op = [this](shared_ptr<BoolLiteral> a, shared_ptr<BoolLiteral> b) {
         if (config_.logs.computations)
-            log({"computing " + std::string(a->val ? "true" : "false") + " and " + (b->val ? "true" : "false"), a->span});
+            log({"computing " + std::string(boolToStr(a->val)) + " and " + boolToStr(b->val), a->span});
         return a->val && b->val;
         };
         return optimizeBoolBinary(op);
     }
     case ExprEnum::Or: { auto op = [this](shared_ptr<BoolLiteral> a, shared_ptr<BoolLiteral> b) {
         if (config_.logs.computations)
-            log({"computing " + std::string(a->val ? "true" : "false") + " or " + (b->val ? "true" : "false"), a->span});
+            log({"computing " + std::string(boolToStr(a->val)) + " or " + boolToStr(b->val), a->span});
         return a->val || b->val;
         };
         return optimizeBoolBinary(op);
     }
     case ExprEnum::Xor: { auto op = [this](shared_ptr<BoolLiteral> a, shared_ptr<BoolLiteral> b) {
         if (config_.logs.computations)
-            log({"computing " + std::string(a->val ? "true" : "false") + " xor " + (b->val ? "true" : "false"), a->span});
+            log({"computing " + std::string(boolToStr(a->val)) + " xor " + boolToStr(b->val), a->span});
         return a->val ^ b->val;
         };
         return optimizeBoolBinary(op);
@@ -361,7 +361,8 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
         if (left && right) {
             if (config_.logs.computations) {
                 if (e.type->code == TypeEnum::Bool)
-                    log({"computing " + std::string(left ? "true" : "false") + " == " + (right ? "true" : "false"), e.span});
+                    log({"computing " + std::string(boolToStr(static_cast<BoolLiteral&>(*left).val))
+                        + " == " + boolToStr(static_cast<BoolLiteral&>(*right).val), e.span});
                 else
                     log({"computing " + std::to_string(INT_REAL_CASE(left)) + " == " + std::to_string(INT_REAL_CASE(right)), e.span});
             }
@@ -379,7 +380,7 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
 #if AST_DEBUG_ON
                     std::string("[") + std::to_string(res->debugId) + "] " +
 #endif
-                    "result: " + std::string(res->val ? "true" : "false"), e.span});
+                    "result: " + std::string(boolToStr(res->val)), e.span});
 
             return res;
         } else {
@@ -395,7 +396,8 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
         if (left && right) {
             if (config_.logs.computations) {
                 if (e.type->code == TypeEnum::Bool)
-                    log({"computing " + std::string(left ? "true" : "false") + " /= " + (right ? "true" : "false"), e.span});
+                    log({"computing " + std::string(boolToStr(static_cast<BoolLiteral&>(*left).val))
+                        + " /= " + boolToStr(static_cast<BoolLiteral&>(*right).val), e.span});
                 else
                     log({"computing " + std::to_string(INT_REAL_CASE(left)) + " /= " + std::to_string(INT_REAL_CASE(right)), e.span});
             }
@@ -413,7 +415,7 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
 #if AST_DEBUG_ON
                     std::string("[") + std::to_string(res->debugId) + "] " +
 #endif
-                    "result: " + std::string(res->val ? "true" : "false"), e.span});
+                    "result: " + std::string(boolToStr(res->val)), e.span});
 
             return res;
         } else {
