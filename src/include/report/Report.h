@@ -32,7 +32,7 @@ public:
             char c = (*file_)[pos];
             // Assuming Lexer has already verified correctness of CRLFs, checking for CR is already enough
             if (c == '\n' || c == '\r') break;
-            sourceText[i] = c;
+            sourceText[i] = c == '\t' ? ' ' : c;
         }
 
         sourceText[i] = '\0';
