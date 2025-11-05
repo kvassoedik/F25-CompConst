@@ -167,6 +167,7 @@ void Analyzer::validate(ArrayIdRange& node) {
         );
     }
 
+    decl->everUsed = true;
     node.ref = std::static_pointer_cast<Var>(decl);
 }
 
@@ -195,7 +196,6 @@ void Analyzer::validate(IdRef& node) {
         idRef_.head = nullptr;
     } else {
         if ((*idRef_.currType)->code != TypeEnum::Record) {
-            idRef_.currType = &parser_.getBaseTypes().error;
             saveError(
                 "object " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
                 + file_->extractSrc(idRef_.head->span.start, node.span.end) + ANSI_RESET
@@ -203,6 +203,7 @@ void Analyzer::validate(IdRef& node) {
                 + ANSI_START ANSI_BOLD ANSI_APPLY + stringifyType(*idRef_.currType) + ANSI_RESET,
                 node.span
             );
+            idRef_.currType = &parser_.getBaseTypes().error;
             return;
         }
 
@@ -213,7 +214,6 @@ void Analyzer::validate(IdRef& node) {
         );
 
         if (it == static_cast<RecordType&>(**idRef_.currType).members.end()) {
-            idRef_.currType = &parser_.getBaseTypes().error;
             saveError(
                 "object " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
                 + file_->extractSrc(idRef_.head->span.start, idRef_.prev->span.end) + ANSI_RESET
@@ -222,6 +222,7 @@ void Analyzer::validate(IdRef& node) {
                 + ANSI_START ANSI_BOLD ANSI_APPLY + node.id + ANSI_RESET + "'",
                 node.span
             );
+            idRef_.currType = &parser_.getBaseTypes().error;
             return;
         }
 
@@ -396,6 +397,14 @@ void Analyzer::validate(PrintStmt& node) {
 
     for (auto& arg: node.args) {
         arg->validate(*this);
+
+        if (!isPrimitiveType(arg->type) && !isErrorType(arg->type))
+            saveError(
+                "cannot print non-primitive type: " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
+                + stringifyType(arg->type) + ANSI_RESET,
+                arg->span
+            );
+
         auto opt = optimizer_.computeExpr(*arg);
         if (opt) arg = std::move(opt);
     }
@@ -465,6 +474,7 @@ void Analyzer::validate(ReturnStmt& node) {
         node.val->validate(*this);
 
         if (!currRoutine_->getType()->retType) {
+            currRoutine_->getType()->retType = parser_.getBaseTypes().error;
             saveError(
                 "in routine " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + currRoutine_->id
                 + ANSI_RESET + ": return value specified, but routine does not return anything",
@@ -586,7 +596,7 @@ void Analyzer::validate(Var& node) {
     if (node.type) {
         node.type->validate(*this);
         if (node.type->code == TypeEnum::REFERENCE) {
-            auto lock = reinterpret_cast<TypeRef&>(*node.type).ref.lock();
+            auto lock = static_cast<TypeRef&>(*node.type).ref.lock();
             if (lock)
                 node.type = lock->type;
             else
@@ -638,27 +648,44 @@ void Analyzer::validate(Routine& node) {
         return;
     }
 
-    if (!node.body) {
-        undefinedRoutines_.emplace(node.id, std::static_pointer_cast<Routine>(node.shared_from_this()));
-        return;
-    }
-
-    undefinedRoutines_.erase(node.id);
+    node.type->validate(*this);
 
     auto it = currBlock_->declMap.find(node.id);
     if (it == currBlock_->declMap.end())
         currBlock_->declMap.emplace(node.id, node.shared_from_this());
     else {
-        saveError(
-            "redefinition of identifier " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
-            + node.id + ANSI_RESET,
-            node.span
-        );
-        reporter_.report({
-            .level = CompileMsg::Level::Appendix,
-            .message = "previously defined here",
-            .span = it->second->span
-        });
+        if (undefinedRoutines_.erase(node.id) > 0) {
+            if (!areTypesEqual(it->second->type, node.type)) {
+                saveError(
+                    "type mismatch with forward routine declaration;\n\tprevious: "
+                    + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + stringifyType(it->second->type)
+                    + ANSI_RESET + "\n\tnew: " + ANSI_START ANSI_BOLD ANSI_APPLY
+                    + stringifyType(node.type) + ANSI_RESET,
+                    node.span
+                );
+                reporter_.report({
+                    .level = CompileMsg::Level::Appendix,
+                    .message = "previously declared here",
+                    .span = it->second->span
+                });
+            }
+        } else {
+            saveError(
+                "redefinition of identifier " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
+                + node.id + ANSI_RESET,
+                node.span
+            );
+            reporter_.report({
+                .level = CompileMsg::Level::Appendix,
+                .message = "previously defined here",
+                .span = it->second->span
+            });
+        }
+    }
+
+    if (!node.body) {
+        undefinedRoutines_.emplace(node.id, std::static_pointer_cast<Routine>(node.shared_from_this()));
+        return;
     }
 
     // set currBlock so that params are added into its declMap, not the outer one
@@ -677,6 +704,13 @@ void Analyzer::validate(Routine& node) {
     currRoutine_ = &node;
     node.body->validate(*this);
     currRoutine_ = nullptr;
+
+    if (it != currBlock_->declMap.end()) {
+        static_cast<Routine&>(*it->second).body = std::move(node.body);
+        static_cast<Routine&>(*it->second).type = std::move(node.type);
+        node.everUsed = false;
+        optimizer_.removeUnitFromCurrBlockLater(node);
+    }
 }
 
 void Analyzer::validate(RoutineCall& node) {
@@ -687,21 +721,20 @@ void Analyzer::validate(RoutineCall& node) {
 
     invalidateKnownVarsInCurrBlock();
 
-    auto& expr = static_cast<RoutineCall&>(node);
-    auto decl = searchDeclaration(expr.routineId);
+    auto decl = searchDeclaration(node.routineId);
     if (!decl) {
         node.type = parser_.getBaseTypes().error;
         saveError("use of undeclared identifier: "
-            + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + expr.routineId + ANSI_RESET,
-            expr.span
+            + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + node.routineId + ANSI_RESET,
+            node.span
         );
         return;
     }
     if (!decl->isRoutine) {
         node.type = parser_.getBaseTypes().error;
         saveError("attempt to call a variable that is not a routine " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
-            + expr.routineId + ANSI_RESET,
-            expr.span
+            + node.routineId + ANSI_RESET,
+            node.span
         );
         return;
     }
@@ -709,23 +742,23 @@ void Analyzer::validate(RoutineCall& node) {
     decl->everUsed = true;
     auto& routine = static_cast<Routine&>(*decl);
 
-    if (routine.getType()->params.size() != expr.args.size()) {
+    if (routine.getType()->params.size() != node.args.size()) {
         saveError("in routine call to " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + routine.id
             + ANSI_RESET + ": argument count mismatch; expected "
             + std::to_string(routine.getType()->params.size())
-            + ", but given " + std::to_string(expr.args.size()),
-            Tokens::Span{expr.span.line, expr.span.start, expr.span.start + expr.routineId.size()}
+            + ", but given " + std::to_string(node.args.size()),
+            Tokens::Span{node.span.line, node.span.start, node.span.start + node.routineId.size()}
         );
     }
-    for (size_t i = 0, num = std::min(routine.getType()->params.size(), expr.args.size()); i < num; ++i) {
-        expr.args[i]->validate(*this);
-        if (expr.args[i]->code == ExprEnum::IdRef)
-            invalidateKnownVarByRef(static_cast<IdRef&>(*expr.args[i]));
+    for (size_t i = 0, num = std::min(routine.getType()->params.size(), node.args.size()); i < num; ++i) {
+        node.args[i]->validate(*this);
+        if (node.args[i]->code == ExprEnum::IdRef)
+            invalidateKnownVarByRef(static_cast<IdRef&>(*node.args[i]));
 
         if (
             !isErrorType(routine.getType()->params[i]->type)
-            && !isErrorType(expr.args[i]->type)
-            && !areTypesEqual(routine.getType()->params[i]->type, expr.args[i]->type)
+            && !isErrorType(node.args[i]->type)
+            && !areTypesEqual(routine.getType()->params[i]->type, node.args[i]->type)
         ) {
             saveError(
                 "in routine call to " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + routine.id
@@ -733,19 +766,13 @@ void Analyzer::validate(RoutineCall& node) {
                 + "expected: " + ANSI_START ANSI_BOLD ANSI_APPLY
                 + stringifyType(routine.getType()->params[i]->type) + ANSI_RESET
                 + "\n\tbut got: " + ANSI_START ANSI_BOLD ANSI_APPLY
-                + stringifyType(expr.args[i]->type) + ANSI_RESET,
-                expr.args[i]->span
+                + stringifyType(node.args[i]->type) + ANSI_RESET,
+                node.args[i]->span
             );
         }
 
-        auto opt = optimizer_.computeExpr(*expr.args[i]);
-        if (opt) expr.args[i] = std::move(opt);
-    }
-    if (!routine.body) {
-        saveError("use of routine with no body: " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
-            + expr.routineId + ANSI_RESET,
-            expr.span
-        );
+        auto opt = optimizer_.computeExpr(*node.args[i]);
+        if (opt) node.args[i] = std::move(opt);
     }
 
     node.type = routine.getType()->retType;
@@ -771,6 +798,12 @@ void Analyzer::validate(ArrayType& node) {
 
         if (!node.size->knownPrimitive) {
             saveError("array type size specified does not evaluate at compile-time", node.size->span);
+        }
+        if (static_cast<IntLiteral&>(*node.size).val < 0) {
+            saveError(
+                "array type size specified is less than 0: " + std::to_string(static_cast<IntLiteral&>(*node.size).val),
+                node.size->span
+            );
         }
     } else {
         if (!analyzingRoutineParams_) {
@@ -809,7 +842,7 @@ void Analyzer::validate(ArrayAccess& node) {
 
         auto size = std::static_pointer_cast<IntLiteral>(std::static_pointer_cast<ArrayType>(*idRef_.currType)->size);
         auto val = std::static_pointer_cast<IntLiteral>(node.val);
-        if (val->knownPrimitive && size->knownPrimitive) {
+        if (size && val->knownPrimitive && size->knownPrimitive) {
             if (val->val < 0 || val->val >= size->val) {
                 saveError(
                     "array index out of bounds;\n\tmax index: "
@@ -832,6 +865,17 @@ void Analyzer::validate(ArrayAccess& node) {
 
 void Analyzer::validate(RecordType& node) {
     for (auto& member: node.members) {
+        member->everUsed = true;
+
+        auto [_, inserted] = recordMemberNames_.insert(member->id);
+        if (!inserted) {
+            saveError(
+                "duplicate record member name: " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
+                + member->id + ANSI_RESET,
+                member->span
+            );
+        }
+
         if (member->type)
             member->type->validate(*this);
         if (member->val)

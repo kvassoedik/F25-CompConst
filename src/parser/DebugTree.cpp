@@ -195,11 +195,13 @@ void DebugTree::print(Ast::ModifiablePrimary& node) {
 }
 void DebugTree::print(Ast::IdRef& node) {
     auto lock = node.ref.lock();
-    os_ << (!lock ? ANSI_START ANSI_RED ANSI_AND ANSI_BOLD ANSI_APPLY : "")
+    os_ << (!lock && nextModifPrimary_ != &node ? ANSI_START ANSI_RED ANSI_AND ANSI_BOLD ANSI_APPLY : "")
         << "IdRef "
         << (lock ? AST_DEBUG_PTR_TO_STR(lock) : node.id + ANSI_RESET)
         << (node.next ? " -> " + AST_DEBUG_PTR_TO_STR(node.next) : "")
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
+
+    nextModifPrimary_ = node.next.get();
 }
 
 // === Literals / Expressions ===
@@ -324,7 +326,7 @@ void DebugTree::print(Ast::RoutineCall& node) {
     }
 
     auto lock = node.ref.lock();
-    os_ << (!lock ? ANSI_START ANSI_RED ANSI_AND ANSI_BOLD ANSI_APPLY : "")
+    os_ << (!lock && nextModifPrimary_ != &node ? ANSI_START ANSI_RED ANSI_AND ANSI_BOLD ANSI_APPLY : "")
         << "RoutineCall "
         << (lock ? AST_DEBUG_PTR_TO_STR(lock) : node.routineId+ ANSI_RESET)
         << " (" << sArgs << ")"
@@ -351,6 +353,8 @@ void DebugTree::print(Ast::ArrayAccess& node) {
     os_ << "ArrayAccess [" << AST_DEBUG_PTR_TO_STR(node.val) << "]"
         << (node.next ? " ->" + AST_DEBUG_PTR_TO_STR(node.next) : "")
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
+
+    nextModifPrimary_ = node.next.get();
 }
 void DebugTree::print(Ast::RecordType& node) {
     std::string sMembers;

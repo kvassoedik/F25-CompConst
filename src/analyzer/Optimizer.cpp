@@ -422,6 +422,25 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
 #undef INT_REAL_CASE
 }
 
+void Optimizer::onBlockFinish(Ast::Block& currBlock) {
+    // Removing redundant statements
+    std::vector<std::list<std::shared_ptr<Entity>>::const_iterator> rm;
+    for (auto it = currBlock.units.cbegin(); it != currBlock.units.end(); ++it) {
+        for (auto p: unitsToBeRemoved_) {
+            if (it->get() != p) continue;
+            rm.push_back(it);
+        }
+    }
+    for (auto& it: rm)
+        currBlock.units.erase(it);
+
+    removeUnusedDecls(currBlock);
+}
+
+void Optimizer::removeUnitFromCurrBlockLater(const Entity& node) {
+    unitsToBeRemoved_.push_back(&node);
+}
+
 void Optimizer::removeUnusedDecls(Block& currBlock) {
     if (config_.disabled)
         return;
@@ -458,19 +477,4 @@ Optimizer::AssignmentOptStatus Optimizer::optimizeAssignmentAway(Ast::Assignment
         return AssignmentOptStatus::Fail;
     }
     return AssignmentOptStatus::Skip;
-}
-
-void Optimizer::onBlockFinish(Ast::Block& currBlock) {
-    // Removing redundant statements
-    std::vector<std::list<std::shared_ptr<Entity>>::const_iterator> rm;
-    for (auto it = currBlock.units.cbegin(); it != currBlock.units.end(); ++it) {
-        for (auto p: unitsToBeRemoved_) {
-            if (it->get() != p) continue;
-            rm.push_back(it);
-        }
-    }
-    for (auto& it: rm)
-        currBlock.units.erase(it);
-
-    removeUnusedDecls(currBlock);
 }

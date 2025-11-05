@@ -88,6 +88,7 @@ private:
     unsigned int depth_{0};
     bool depthIncrement_{false};
     bool isCurrOrphan_{false};
+    const Ast::Entity* nextModifPrimary_{nullptr};
 };
 
 // GLOBAL VARIABLE

@@ -61,6 +61,7 @@ private:
     } idRef_;
     Ast::Routine* currRoutine_{nullptr};
     std::unordered_map<std::string, std::shared_ptr<Ast::Routine>> undefinedRoutines_;
+    std::unordered_set<std::string> recordMemberNames_;
     Reporter reporter_{file_};
     Parser& parser_;
     Optimizer& optimizer_;

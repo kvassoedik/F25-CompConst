@@ -308,7 +308,13 @@ std::shared_ptr<Ast::Routine> Parser::parseRoutine() {
 
             auto&& body = Ast::mk<Ast::Block>(Tokens::Span{tk->span.line, tk->span.end+1, tk->span.end+1});
             auto&& retStmt = Ast::mk<Ast::ReturnStmt>(body->span);
-            retStmt->val = std::move(parseExpr());
+            auto&& expr = parseExpr();
+            if (expr) {
+                retStmt->span.end = expr->span.end;
+                body->span = retStmt->span;
+            }
+
+            retStmt->val = std::move(expr);
             body->units.push_back(std::move(retStmt));
             body->parent = currBlock_;
             res->body = std::move(body);
@@ -1149,6 +1155,7 @@ std::shared_ptr<Ast::WhileStmt> Parser::parseWhileStmt() {
         );
         return nullptr;
     }
+    tokens_.move();
 
     res->span.end = tk->span.end;
     res->condition = std::move(expr);

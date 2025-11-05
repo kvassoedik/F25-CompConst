@@ -13,11 +13,12 @@ public:
 
     int configure(int* argc, char** argv);
     std::shared_ptr<Ast::Expr> computeExpr(Ast::Expr& expr);
+    void onBlockFinish(Ast::Block& currBlock);
+    void removeUnitFromCurrBlockLater(const Ast::Entity& node);
     void removeUnusedDecls(Ast::Block& currBlock);
 
     enum class AssignmentOptStatus { Skip, Fail, Success };
     AssignmentOptStatus optimizeAssignmentAway(Ast::Assignment& node);
-    void onBlockFinish(Ast::Block& currBlock);
 private:
     struct Log {
         const std::string& msg;

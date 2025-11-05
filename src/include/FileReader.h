@@ -48,12 +48,12 @@ public:
 
     // Returns source code string with endlines substituted with spaces
     std::string extractSrc(size_t start, size_t end) const {
-        if (start > end)
-            throw std::range_error("FileReader::extractSrc: start must be >= end");
+        if (end < start)
+            throw std::range_error("FileReader::extractSrc: start must be > end");
         std::string res;
         res.reserve(end - start);
 
-        for (size_t i = 0, max = std::min(end, buf_.size()) - start + 1; i < max; ++i) {
+        for (size_t i = 0, max = std::min(end, buf_.size()) - start; i < max; ++i) {
             res += buf_[start + i];
             if (res[i] == '\n' || res[i] == '\r' || res[i] == '\t')
                 res[i] = ' ';
