@@ -1,4 +1,4 @@
-var t: record var i is 1 end
+var t: record var i: integer end
 
 routine main() is
     print t // should throw, cannot print user types

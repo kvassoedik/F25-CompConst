@@ -1,7 +1,7 @@
 type intArr is array[5] integer
 
 var X: intArr
-var Y: array[2] boolean
+var Y: array[2] integer
 
 routine main() is
 	var i is 1

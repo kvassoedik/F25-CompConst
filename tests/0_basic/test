@@ -1,1 +1,10 @@
-var x is 0/*h
+var x is 0/*h*/
+
+routine abc(a: real): integer is
+	var temp: integer
+	temp := a
+	return temp
+end
+routine main() is
+	abc(1.)
+end

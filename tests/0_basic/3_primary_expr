@@ -1,8 +1,9 @@
-var x is 10
-var y is 20
+var x is +10.
+var y is -1--x
 var z is -x
 
 // Primary on integers
 routine main() is
+    // var z is -x
     print x,z // 10 -10
 end

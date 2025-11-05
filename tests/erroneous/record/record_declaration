@@ -1,5 +1,5 @@
 var x: record
-    var a is 1
+    var a
     a := 5 // should throw, non-declaration inside record declaration
 end
 

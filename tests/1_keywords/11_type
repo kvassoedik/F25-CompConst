@@ -1,7 +1,8 @@
 type my_type123 is integer
-var x: my_type123 is 20
-var x is 20
+var x: my_type123
+
+var b is x = x
 
 routine main() is
-	print x = x
+	print b
 end

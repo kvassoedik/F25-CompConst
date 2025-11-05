@@ -1,3 +1,7 @@
+routine foo(arr: array[] boolean, a: integer) is
+    arr[5] := true
+end
+
 routine main() is
     for x in 0..9 loop
         print x + 1
@@ -8,6 +12,7 @@ routine main() is
     end
 
     var a: array[3] integer
+
     for i in a loop
         a[i] := i*2
     end
@@ -17,6 +22,9 @@ routine main() is
     for i in a reverse loop
         print a[i]
     end
+
+    var b: array[4] boolean
+    foo(b, 1)
 end
 
 /* Output:

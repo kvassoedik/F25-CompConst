@@ -2,7 +2,7 @@ var x is 0
 
 routine main() is
     while x < 10 loop
-        x = x + 1
+        x := x + 1
         print x
     end
 
@@ -15,9 +15,9 @@ routine main() is
     while x < 2 loop
         while y < 5 loop
             print y + 10
-            y = y + 1
+            y := y + 1
         end
-        x = x + 1
+        x := x + 1
         print x
     end
 end

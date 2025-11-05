@@ -1,4 +1,4 @@
-type obj is
+type obj is record
 	var x is 1
 	var y: real
 end

@@ -4,5 +4,5 @@ var a: array[1] integer
 var b: T
 
 routine main() is
-	a := b // should throw, type mismatch (definitely not lazy :0)
+	a := b
 end
