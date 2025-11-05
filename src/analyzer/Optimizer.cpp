@@ -73,11 +73,11 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
                 res->optimized = true;
 #endif
                 if (config_.logs.computations)
-                    log({"result"
+                    log({
 #if AST_DEBUG_ON
-                        + std::string(" [") + std::to_string(res->debugId) + "]"
+                        std::string("[") + std::to_string(res->debugId) + "] " +
 #endif
-                        + std::string(": ") + std::to_string(res->val), e.span});
+                        "result: " + std::to_string(res->val), e.span});
 
                 return res;
             }
@@ -91,11 +91,11 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
             res->optimized = true;
 #endif
             if (config_.logs.computations)
-                log({"result"
+                log({
 #if AST_DEBUG_ON
-                    + std::string(" [") + std::to_string(res->debugId) + "]"
+                        std::string("[") + std::to_string(res->debugId) + "] " +
 #endif
-                    + std::string(": ") + std::to_string(res->val), e.span});
+                        "result: " + std::to_string(res->val), e.span});
 
             return res;
         } else {
@@ -121,11 +121,11 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
             res->optimized = true;
 #endif
             if (config_.logs.computations)
-                log({"result"
+                log({
 #if AST_DEBUG_ON
-                    + std::string(" [") + std::to_string(res->debugId) + "]"
+                    std::string("[") + std::to_string(res->debugId) + "] " +
 #endif
-                    + std::string(": ") + (res->val ? "true" : "false"), e.span});
+                    "result: " + std::string(res->val ? "true" : "false"), e.span});
 
             return res;
         } else {
@@ -155,11 +155,11 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
             res->optimized = true;
 #endif
             if (config_.logs.computations)
-                log({"result"
+                log({
 #if AST_DEBUG_ON
-                    + std::string(" [") + std::to_string(res->debugId) + "]"
+                    std::string("[") + std::to_string(res->debugId) + "] " +
 #endif
-                    + std::string(": ") + (res->val ? "true" : "false"), e.span});
+                    "result: " + std::string(res->val ? "true" : "false"), e.span});
 
             return res;
         } else {
@@ -194,6 +194,13 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
         );
         if (!ref || !ref->knownPrimitive)
             break;
+
+        if (config_.logs.computations)
+            log({
+#if AST_DEBUG_ON
+                    std::string("[") + std::to_string(ref->val ? ref->val->debugId : 0) + "] " +
+#endif
+                    "passed identifier '" + ref->id + "' value", ref->span});
         return ref->val;
     }
     case ExprEnum::Negate: {
@@ -214,11 +221,11 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
             res->optimized = true;
 #endif
             if (config_.logs.computations)
-                log({"computed"
+                log({
 #if AST_DEBUG_ON
-                        + std::string(" [") + std::to_string(res->debugId) + "]"
+                    std::string("[") + std::to_string(res->debugId) + "]" +
 #endif
-                        + std::string(": ") + std::to_string(res->val), e.span});
+                    "computed: " + std::to_string(res->val), e.span});
 
             return res;
         }
@@ -232,11 +239,11 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
         res->optimized = true;
 #endif
         if (config_.logs.computations)
-                log({"computed"
+            log({
 #if AST_DEBUG_ON
-                        + std::string(" [") + std::to_string(res->debugId) + "]"
+                std::string("[") + std::to_string(res->debugId) + "] " +
 #endif
-                        + std::string(": ") + std::to_string(res->val), e.span});
+                "computed: " + std::to_string(res->val), e.span});
 
         return res;
     }
@@ -255,11 +262,11 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
         res->optimized = true;
 #endif
         if (config_.logs.computations)
-                log({"computed"
+                log({
 #if AST_DEBUG_ON
-                        + std::string(" [") + std::to_string(res->debugId) + "]"
+                    std::string(" [") + std::to_string(res->debugId) + "] " +
 #endif
-                        + std::string(": not ") + std::to_string(std::static_pointer_cast<BoolLiteral>(opt)->val), e.span});
+                    "computed: not " + std::to_string(std::static_pointer_cast<BoolLiteral>(opt)->val), e.span});
 
         return res;
     }
@@ -368,11 +375,11 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
             res->optimized = true;
 #endif
             if (config_.logs.computations)
-                log({"result"
+                log({
 #if AST_DEBUG_ON
-                    + std::string(" [") + std::to_string(res->debugId) + "]"
+                    std::string("[") + std::to_string(res->debugId) + "] " +
 #endif
-                    + std::string(": ") + (res->val ? "true" : "false"), e.span});
+                    "result: " + std::string(res->val ? "true" : "false"), e.span});
 
             return res;
         } else {
@@ -402,11 +409,11 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
             res->optimized = true;
 #endif
             if (config_.logs.computations)
-                log({"result"
+                log({
 #if AST_DEBUG_ON
-                    + std::string(" [") + std::to_string(res->debugId) + "]"
+                    std::string("[") + std::to_string(res->debugId) + "] " +
 #endif
-                    + std::string(": ") + (res->val ? "true" : "false"), e.span});
+                    "result: " + std::string(res->val ? "true" : "false"), e.span});
 
             return res;
         } else {
