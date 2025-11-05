@@ -43,7 +43,7 @@ void Analyzer::run() {
         it->second->everUsed = true;
     }
 
-    optimizer_.removeUnusedDecls(*root_);
+    optimizer_.onBlockFinish(*root_);
 }
 
 void Analyzer::saveError(std::string reason, Tokens::Span span) {
@@ -120,7 +120,7 @@ void Analyzer::validate(Block& node) {
     }
 
     if (currBlock_ && currBlock_ != root_.get())
-        optimizer_.removeUnusedDecls(*currBlock_);
+        optimizer_.onBlockFinish(*currBlock_);
 
     currBlock_ = currBlock_->parent.lock().get();
     deadCode_ = false;
@@ -318,7 +318,7 @@ void Analyzer::validate(BinaryExpr& node) {
             saveError(
                 "binary operator used with incompatible types: " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
                 + stringifyType(expr.left->type)
-                + ANSI_RESET + "and " + ANSI_START ANSI_BOLD ANSI_APPLY
+                + ANSI_RESET + " and " + ANSI_START ANSI_BOLD ANSI_APPLY
                 + stringifyType(expr.right->type) + ANSI_RESET,
                 expr.span
             );
@@ -337,7 +337,7 @@ void Analyzer::validate(BinaryExpr& node) {
         ) {
             saveError("equality used with incompatible types: " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
                 + stringifyType(expr.left->type)
-                + ANSI_RESET + "and " + ANSI_START ANSI_BOLD ANSI_APPLY
+                + ANSI_RESET + " and " + ANSI_START ANSI_BOLD ANSI_APPLY
                 + stringifyType(expr.right->type) + ANSI_RESET,
                 expr.span
             );
@@ -389,6 +389,11 @@ void Analyzer::validate(UnaryExpr& node) {
 }
 
 void Analyzer::validate(PrintStmt& node) {
+    if (!currRoutine_) {
+        saveError("print statement in global scope is illegal", node.span);
+        return;
+    }
+
     for (auto& arg: node.args) {
         arg->validate(*this);
         auto opt = optimizer_.computeExpr(*arg);
@@ -397,6 +402,11 @@ void Analyzer::validate(PrintStmt& node) {
 }
 
 void Analyzer::validate(IfStmt& node) {
+    if (!currRoutine_) {
+        saveError("if statement in global scope is illegal", node.span);
+        return;
+    }
+
     node.condition->validate(*this);
     if (!isErrorType(node.condition->type) && node.condition->type->code != TypeEnum::Bool) {
         saveError("if condition must be of boolean type; actual "
@@ -413,6 +423,11 @@ void Analyzer::validate(IfStmt& node) {
 }
 
 void Analyzer::validate(WhileStmt& node) {
+    if (!currRoutine_) {
+        saveError("while statement in global scope is illegal", node.span);
+        return;
+    }
+
     node.condition->validate(*this);
     if (!isErrorType(node.condition->type) && node.condition->type->code != TypeEnum::Bool) {
         saveError("while condition must be of boolean type; actual "
@@ -427,6 +442,11 @@ void Analyzer::validate(WhileStmt& node) {
 }
 
 void Analyzer::validate(ForStmt& node) {
+    if (!currRoutine_) {
+        saveError("for statement in global scope is illegal", node.span);
+        return;
+    }
+
     node.body->declMap.emplace(node.counter->id, node.counter);
     node.counter->type = parser_.getBaseTypes().integer;
     node.range->validate(*this);
@@ -435,7 +455,7 @@ void Analyzer::validate(ForStmt& node) {
 
 void Analyzer::validate(ReturnStmt& node) {
     if (!currRoutine_) {
-        saveError("return statement outside of routine body", node.span);
+        saveError("return statement in global scope is illegal", node.span);
         return;
     }
 
@@ -488,44 +508,60 @@ void Analyzer::validate(Assignment& node) {
         return;
     }
 
-    invalidateKnownVarByRef(static_cast<IdRef&>(*node.left));
-
     node.val->validate(*this);
-    if (node.val->type->code == TypeEnum::ERROR)
-        return;
-
-    if (areTypesEqual(node.val->type, node.left->type))
-        return;
-
-    if (node.left->type->code == TypeEnum::Array || node.left->type->code == TypeEnum::Record) {
-        saveError("assignment type mismatch\n\texpected: "
-            + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + stringifyType(node.left->type)
-            + ANSI_RESET + "\n\tbut got: "
-            + ANSI_START ANSI_BOLD ANSI_APPLY + stringifyType(node.val->type) + ANSI_RESET,
-            node.val->span
-        );
+    if (node.val->type->code == TypeEnum::ERROR) {
+        invalidateKnownVarByRef(static_cast<IdRef&>(*node.left));
         return;
     }
 
-    if (node.left->type->code == TypeEnum::Bool) {
-        if (node.val->type->code == TypeEnum::Real) {
-            saveError("illegal assignment of real to boolean", node.val->span);
+    bool typesEqual = areTypesEqual(node.val->type, node.left->type);
+    if (!typesEqual) {
+        if (node.left->type->code == TypeEnum::Array || node.left->type->code == TypeEnum::Record) {
+            invalidateKnownVarByRef(static_cast<IdRef&>(*node.left));
+            saveError("assignment type mismatch\n\texpected: "
+                + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + stringifyType(node.left->type)
+                + ANSI_RESET + "\n\tbut got: "
+                + ANSI_START ANSI_BOLD ANSI_APPLY + stringifyType(node.val->type) + ANSI_RESET,
+                node.val->span
+            );
             return;
         }
 
-        auto opt = optimizer_.computeExpr(*node.val);
-        if (opt) node.val = std::move(opt);
-
-        if (node.val->type->code == TypeEnum::Int) {
-            if (node.val->knownPrimitive) {
-                auto val = std::static_pointer_cast<IntLiteral>(node.val)->val;
-                if (val == 0 || val == 1)
-                    return;
+        if (node.left->type->code == TypeEnum::Bool) {
+            if (node.val->type->code == TypeEnum::Real) {
+                invalidateKnownVarByRef(static_cast<IdRef&>(*node.left));
+                saveError("illegal assignment of real to boolean", node.val->span);
+                return;
             }
+        }
+    }
+
+    auto opt = optimizer_.computeExpr(*node.val);
+    if (opt) node.val = std::move(opt);
+
+    if (!typesEqual && node.left->type->code == TypeEnum::Bool
+        && node.val->type->code == TypeEnum::Int)
+    {
+        if (!node.val->knownPrimitive
+            || (std::static_pointer_cast<IntLiteral>(node.val)->val != 0
+            && std::static_pointer_cast<IntLiteral>(node.val)->val != 1)) {
+            
+            invalidateKnownVarByRef(static_cast<IdRef&>(*node.left));
             saveError(
-                "assignment of integer to boolean is only allowed if the left side is known and is either 0 or 1",
+                "assignment of integer to boolean is only allowed if the left side is evaluated at compile-time and is either 0 or 1",
                 node.val->span
             );
+            return;
+        }
+    }
+
+    Optimizer::AssignmentOptStatus res = optimizer_.optimizeAssignmentAway(node);
+    if (res == Optimizer::AssignmentOptStatus::Skip)
+        invalidateKnownVarByRef(static_cast<IdRef&>(*node.left));
+    else if (res == Optimizer::AssignmentOptStatus::Fail) {
+        invalidateKnownVarByRef(static_cast<IdRef&>(*node.left));
+        if (!currRoutine_) {
+            saveError("non-compile-time evaluated assignment in global scope is illegal", node.span);
         }
     }
 }
@@ -576,6 +612,19 @@ void Analyzer::validate(Var& node) {
 
         node.type = node.val->type;
         node.knownPrimitive = node.val->knownPrimitive;
+    } else if (!analyzingRoutineParams_) {
+        // default initializer
+
+        if (node.type->code == TypeEnum::Bool) {
+            node.knownPrimitive = true;
+            node.val = parser_.getDefaultInitializers().boolean;
+        } else if (node.type->code == TypeEnum::Int) {
+            node.knownPrimitive = true;
+            node.val = parser_.getDefaultInitializers().integer;
+        } else if (node.type->code == TypeEnum::Real) {
+            node.knownPrimitive = true;
+            node.val = parser_.getDefaultInitializers().real;
+        }
     }
 }
 
@@ -617,18 +666,25 @@ void Analyzer::validate(Routine& node) {
     currBlock_ = node.body.get();
 
     // parameters will automatically be set to uknown at compile time upon entering the body->validate()
+    analyzingRoutineParams_ = true;
     for (auto& param: node.getType()->params) {
         param->validate(*this);
         if (isErrorType(param->type))
             saveError("routine parameter has <error> type", param->span);
     }
 
+    analyzingRoutineParams_ = false;
     currRoutine_ = &node;
     node.body->validate(*this);
     currRoutine_ = nullptr;
 }
 
 void Analyzer::validate(RoutineCall& node) {
+    if (!currRoutine_) {
+        saveError("routine call in global scope is illegal", node.span);
+        return;
+    }
+
     invalidateKnownVarsInCurrBlock();
 
     auto& expr = static_cast<RoutineCall&>(node);
@@ -650,7 +706,9 @@ void Analyzer::validate(RoutineCall& node) {
         return;
     }
 
+    decl->everUsed = true;
     auto& routine = static_cast<Routine&>(*decl);
+
     if (routine.getType()->params.size() != expr.args.size()) {
         saveError("in routine call to " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + routine.id
             + ANSI_RESET + ": argument count mismatch; expected "
@@ -695,8 +753,30 @@ void Analyzer::validate(RoutineCall& node) {
 }
 
 void Analyzer::validate(ArrayType& node) {
-    // TODO
     node.elemType->validate(*this);
+
+    if (node.size) {
+        node.size->validate(*this);
+        if (node.size->type->code != TypeEnum::Int) {
+            saveError("array type size specified is not of integer type; actual: "
+                + std::string(ANSI_START ANSI_BLUE ANSI_APPLY) + stringifyType(node.size->type)
+                + ANSI_RESET,
+                node.size->span
+            );
+            return;
+        }
+
+        auto opt = optimizer_.computeExpr(*node.size);
+        if (opt) node.size = std::move(opt);
+
+        if (!node.size->knownPrimitive) {
+            saveError("array type size specified does not evaluate at compile-time", node.size->span);
+        }
+    } else {
+        if (!analyzingRoutineParams_) {
+            saveError("array type size must be specified", node.span);
+        }
+    }
 }
 
 void Analyzer::validate(ArrayAccess& node) {
@@ -709,7 +789,6 @@ void Analyzer::validate(ArrayAccess& node) {
         );
         return;
     }
-    idRef_.currType = &std::static_pointer_cast<ArrayType>(*idRef_.currType)->elemType;
 
     {
         auto state = idRef_;
@@ -720,7 +799,7 @@ void Analyzer::validate(ArrayAccess& node) {
 
     if (!isErrorType(node.val->type) && node.val->type->code != TypeEnum::Int) {
         saveError(
-            "array index is not of integer type;\n\tactual: "
+            "array index is not of integer type; actual: "
             + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + stringifyType(node.val->type) + ANSI_RESET,
             node.span
         );
@@ -728,20 +807,22 @@ void Analyzer::validate(ArrayAccess& node) {
         auto opt = optimizer_.computeExpr(*node.val);
         if (opt) node.val = std::move(opt);
 
-        if (node.val->knownPrimitive) {
-            auto val = std::static_pointer_cast<IntLiteral>(node.val)->val;
-            auto size = std::static_pointer_cast<IntLiteral>(std::static_pointer_cast<ArrayType>(node.type)->size)->val;
-            if (val < size || val >= size) {
+        auto size = std::static_pointer_cast<IntLiteral>(std::static_pointer_cast<ArrayType>(*idRef_.currType)->size);
+        auto val = std::static_pointer_cast<IntLiteral>(node.val);
+        if (val->knownPrimitive && size->knownPrimitive) {
+            if (val->val < 0 || val->val >= size->val) {
                 saveError(
                     "array index out of bounds;\n\tmax index: "
-                    + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + std::to_string(size)
+                    + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + std::to_string(size->val - 1)
                     + ANSI_RESET + "\n\tprovided: " + ANSI_START ANSI_BOLD ANSI_APPLY
-                    + std::to_string(val) + ANSI_RESET,
+                    + std::to_string(val->val) + ANSI_RESET,
                     node.span
                 );
             }
         }
     }
+
+    idRef_.currType = &std::static_pointer_cast<ArrayType>(*idRef_.currType)->elemType;
 
     if (node.next) {
         idRef_.prev = &node;

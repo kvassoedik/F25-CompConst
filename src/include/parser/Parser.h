@@ -16,6 +16,10 @@ public:
             baseTypes_.integer = Ast::mk<Ast::Type>(Tokens::Span{1,0,0}, Ast::TypeEnum::Int);
             baseTypes_.real = Ast::mk<Ast::Type>(Tokens::Span{1,0,0}, Ast::TypeEnum::Real);
 
+            defaultInitializers_.boolean = Ast::mk<Ast::BoolLiteral>(Tokens::Span{1,0,0}, false);
+            defaultInitializers_.integer = Ast::mk<Ast::IntLiteral>(Tokens::Span{1,0,0}, 0);
+            defaultInitializers_.real = Ast::mk<Ast::RealLiteral>(Tokens::Span{1,0,0}, 0.0);
+
             root_ = Ast::mk<Ast::Block>(Tokens::Span{.line = 1, .start = 0, .end = file_->size()});
             currBlock_ = root_;
         }
@@ -28,6 +32,9 @@ public:
 
     struct BaseTypes;
     const BaseTypes& getBaseTypes() const noexcept { return baseTypes_; }
+
+    struct DefaultInitializers;
+    const DefaultInitializers& getDefaultInitializers() const noexcept { return defaultInitializers_; };
 private:
     bool nextNode();
     void saveError(std::string reason, Tokens::Span span);
@@ -79,6 +86,11 @@ private:
     struct BaseTypes {
         std::shared_ptr<Ast::Type> error, boolean, integer, real;
     } baseTypes_;
+    struct DefaultInitializers {
+        std::shared_ptr<Ast::BoolLiteral> boolean;
+        std::shared_ptr<Ast::IntLiteral> integer;
+        std::shared_ptr<Ast::RealLiteral> real;
+    } defaultInitializers_;
 
     Reporter reporter_{file_};
 };

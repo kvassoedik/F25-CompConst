@@ -53,7 +53,7 @@ void Ast::Printer::printType(Ast::ArrayType& node, options o) {
     std::stringstream output;
     output << "array[";
     if (node.size) {
-        output << (node.size->knownPrimitive ? "_" : "??");
+        output << (node.size->knownPrimitive ? std::to_string(static_cast<Ast::IntLiteral&>(*node.size).val) : "??");
     }
     output << "]: ";
     node.elemType->printType({.os = output});

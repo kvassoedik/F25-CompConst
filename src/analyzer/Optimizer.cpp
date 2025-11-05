@@ -442,3 +442,35 @@ void Optimizer::removeUnusedDecls(Block& currBlock) {
     for (auto& id: rm)
         currBlock.declMap.erase(*id);
 }
+
+Optimizer::AssignmentOptStatus Optimizer::optimizeAssignmentAway(Ast::Assignment& node) {
+    auto parent = std::static_pointer_cast<IdRef>(node.left)->ref.lock();
+    if (!parent)
+        return AssignmentOptStatus::Skip;
+
+    auto& var = static_cast<Var&>(*parent);
+    if (var.knownPrimitive) {
+        if (node.val->knownPrimitive) {
+            var.val = node.val;
+            unitsToBeRemoved_.push_back(&node);
+            return AssignmentOptStatus::Success;
+        }
+        return AssignmentOptStatus::Fail;
+    }
+    return AssignmentOptStatus::Skip;
+}
+
+void Optimizer::onBlockFinish(Ast::Block& currBlock) {
+    // Removing redundant statements
+    std::vector<std::list<std::shared_ptr<Entity>>::const_iterator> rm;
+    for (auto it = currBlock.units.cbegin(); it != currBlock.units.end(); ++it) {
+        for (auto p: unitsToBeRemoved_) {
+            if (it->get() != p) continue;
+            rm.push_back(it);
+        }
+    }
+    for (auto& it: rm)
+        currBlock.units.erase(it);
+
+    removeUnusedDecls(currBlock);
+}

@@ -65,6 +65,7 @@ private:
     Parser& parser_;
     Optimizer& optimizer_;
     bool deadCode_{false};
+    bool analyzingRoutineParams_{false};
 };
 
 }

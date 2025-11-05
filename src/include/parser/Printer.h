@@ -4,7 +4,7 @@
 #include <iostream>
 
 #define AST_PRINTTYPE_METHOD \
-void printType(::Ast::Printer::options o) { ::Ast::Printer::printType(*this, o); }
+virtual void printType(::Ast::Printer::options o) { ::Ast::Printer::printType(*this, o); }
 
 namespace Ast {
 namespace Printer {
