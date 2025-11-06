@@ -83,6 +83,17 @@ void Analyzer::invalidateKnownVarByRef(IdRef& node) {
     std::static_pointer_cast<Var>(it->second)->knownPrimitive = false;
 }
 
+void Analyzer::validateType(std::shared_ptr<Ast::Type>& t) {
+    t->validate(*this);
+    if (t->code == TypeEnum::REFERENCE) {
+        auto lock = static_cast<TypeRef&>(*t).ref.lock();
+        if (lock)
+            t = lock->type;
+        else
+            t = parser_.getBaseTypes().error;
+    }
+}
+
 void Analyzer::validate(TypeRef& node) {
     auto* block = currBlock_;
     while (block) {
@@ -604,16 +615,8 @@ void Analyzer::validate(Var& node) {
         });
     }
 
-    if (node.type) {
-        node.type->validate(*this);
-        if (node.type->code == TypeEnum::REFERENCE) {
-            auto lock = static_cast<TypeRef&>(*node.type).ref.lock();
-            if (lock)
-                node.type = lock->type;
-            else
-                node.type = parser_.getBaseTypes().error;
-        }
-    }
+    if (node.type)
+        validateType(node.type);
     if (node.val) {
         node.val->validate(*this);
         if (node.type && node.val->type && !areTypesEqual(node.type, node.val->type)) {
@@ -631,7 +634,8 @@ void Analyzer::validate(Var& node) {
         auto opt = optimizer_.computeExpr(*node.val);
         if (opt) node.val = std::move(opt);
 
-        node.type = node.val->type;
+        if (!node.type)
+            node.type = node.val->type;
         node.knownPrimitive = node.val->knownPrimitive;
     } else if (!analyzingRoutineParams_) {
         // default initializer
@@ -661,16 +665,8 @@ void Analyzer::validate(Routine& node) {
 
     {
         auto& retType = static_cast<RoutineType&>(*node.type).retType;
-        if (retType) {
-            retType->validate(*this);
-            if (retType->code == TypeEnum::REFERENCE) {
-                auto lock = static_cast<TypeRef&>(*retType).ref.lock();
-                if (lock)
-                    retType = lock->type;
-                else
-                    retType = parser_.getBaseTypes().error;
-            }
-        }
+        if (retType)
+            validateType(retType);
     }
 
     auto it = currBlock_->declMap.find(node.id);
@@ -900,16 +896,8 @@ void Analyzer::validate(RecordType& node) {
             );
         }
 
-        if (member->type) {
-            member->type->validate(*this);
-            if (member->type->code == TypeEnum::REFERENCE) {
-                auto lock = static_cast<TypeRef&>(*member->type).ref.lock();
-                if (lock)
-                    member->type = lock->type;
-                else
-                    member->type = parser_.getBaseTypes().error;
-            }
-        }
+        if (member->type)
+            validateType(member->type);
         if (member->val) {
             if (!member->type)
                 member->type = parser_.getBaseTypes().error;

@@ -428,7 +428,6 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
     }
     return nullptr;
 
-#undef spc
 #undef INT_REAL_CASE
 }
 

@@ -50,6 +50,7 @@ private:
     void invalidateKnownVarsInCurrBlock();
     void invalidateKnownVarByRef(Ast::IdRef& node);
     void saveError(std::string reason, Tokens::Span span);
+    void validateType(std::shared_ptr<Ast::Type>& t);
 private:
     std::shared_ptr<FileReader> file_;
     std::shared_ptr<Ast::Block> root_{nullptr};

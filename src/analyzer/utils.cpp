@@ -11,6 +11,9 @@ bool analyzer::areTypesEqual(const std::shared_ptr<Ast::Type>& t1, const std::sh
         return false;
 
     switch (t1->code) {
+    case Ast::TypeEnum::Bool:
+    case Ast::TypeEnum::Int:
+    case Ast::TypeEnum::Real: return true;
     case Ast::TypeEnum::Array: {
         const auto& at1 = static_cast<Ast::ArrayType&>(*t1), at2 = static_cast<Ast::ArrayType&>(*t2);
         if (at1.size && at2.size) {
@@ -24,7 +27,7 @@ bool analyzer::areTypesEqual(const std::shared_ptr<Ast::Type>& t1, const std::sh
 
         if (!at1.elemType || !at2.elemType || !areTypesEqual(at1.elemType, at2.elemType))
             return false;
-        break;
+        return true;
     }
     case Ast::TypeEnum::Record: {
         const auto& at1 = static_cast<Ast::RecordType&>(*t1), at2 = static_cast<Ast::RecordType&>(*t2);
@@ -35,11 +38,32 @@ bool analyzer::areTypesEqual(const std::shared_ptr<Ast::Type>& t1, const std::sh
             if (!areTypesEqual(at1.members[i]->type, at2.members[i]->type))
                 return false;
         }
-        break;
+        return true;
+    }
+    case Ast::TypeEnum::Routine: {
+        const auto& at1 = static_cast<Ast::RoutineType&>(*t1), at2 = static_cast<Ast::RoutineType&>(*t2);
+        if (at1.params.size() != at2.params.size())
+            return false;
+
+        for (size_t i = 0; i < at1.params.size(); ++i) {
+            if (!areTypesEqual(at1.params[i]->type, at2.params[i]->type))
+                return false;
+        }
+
+        if (!at1.retType)
+            if (!at2.retType) return true;
+            else return false;
+        if (!at2.retType)
+            if (!at1.retType) return true;
+            else return false;
+        if (!areTypesEqual(at1.retType, at2.retType))
+            return false;
+
+        return true;
     }
     }
     
-    return true;
+    return false;
 }
 
 bool analyzer::isErrorType(const std::shared_ptr<Ast::Type> type) { return type->code == Ast::TypeEnum::ERROR; }
