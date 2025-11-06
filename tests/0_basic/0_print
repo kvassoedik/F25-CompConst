@@ -1,4 +1,4 @@
-routine main(a1: array[] boolean) is
+routine main() is
     print true
     print false
     print

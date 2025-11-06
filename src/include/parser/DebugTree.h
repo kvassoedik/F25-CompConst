@@ -14,6 +14,7 @@
 #include <unordered_set>
 #include <vector>
 #include <queue>
+#include <list>
 
 #undef AST_DEBUGTREE_PRINT_METHOD_SIGNATURE
 #define AST_DEBUGTREE_PRINT_METHOD_SIGNATURE \
@@ -47,7 +48,7 @@ public:
     void print(IntRange& node);
     void print(ArrayIdRange& node);
     void print(ArrayAccess& node);
-    void print(ModifiablePrimary& node);
+    void print(Primary& node);
     void print(IdRef& node);
     void print(BoolLiteral& node);
     void print(IntLiteral& node);
@@ -89,7 +90,7 @@ private:
     unsigned int depth_{0};
     bool depthIncrement_{false};
     bool isCurrOrphan_{false};
-    const Entity* nextModifPrimary_{nullptr};
+    std::list<const Entity*> nextPrimary_;
 };
 
 // GLOBAL VARIABLE

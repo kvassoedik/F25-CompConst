@@ -52,8 +52,8 @@ private:
     std::shared_ptr<ast::Block> root_{nullptr};
     ast::Block* currBlock_;
     struct {
-        ast::IdRef* head{nullptr};
-        ast::ModifiablePrimary* prev;
+        ast::Primary* head{nullptr};
+        ast::Primary* prev;
         const std::shared_ptr<ast::Type>* currType;
     } idRef_;
     ast::Routine* currRoutine_{nullptr};

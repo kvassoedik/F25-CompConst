@@ -155,18 +155,18 @@ public:
     std::weak_ptr<Var> ref;
 };
 
-struct ModifiablePrimary : public Expr {
-    ModifiablePrimary(const Ast& ast, Tokens::Span span)
+struct Primary : public Expr {
+    Primary(const Ast& ast, Tokens::Span span)
         : Expr(ast, span, ExprEnum::ERROR) {}
 
     AST_DEBUGTREE_PRINT_METHOD
 public:
-    std::shared_ptr<ModifiablePrimary> next{nullptr};
+    std::shared_ptr<Primary> next{nullptr};
 };
 
-struct IdRef final: public ModifiablePrimary {
+struct IdRef final: public Primary {
     IdRef(const Ast& ast, Tokens::Span span, std::string id)
-        : ModifiablePrimary(ast, span), id(std::move(id)) {
+        : Primary(ast, span), id(std::move(id)) {
             code = ExprEnum::IdRef;
         }
 
@@ -305,7 +305,7 @@ struct Assignment final : public Entity {
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
 public:
-    std::shared_ptr<ModifiablePrimary> left{nullptr};
+    std::shared_ptr<Primary> left{nullptr};
     std::shared_ptr<Expr> val{nullptr};
 };
 
@@ -337,9 +337,11 @@ public:
     std::shared_ptr<Block> body{nullptr};
 };
 
-struct RoutineCall final : public Expr {
+struct RoutineCall final : public Primary {
     RoutineCall(const Ast& ast, Tokens::Span span, std::string routineId)
-        : Expr(ast, span, ExprEnum::RoutineCall), routineId(std::move(routineId)) {}
+        : Primary(ast, span), routineId(std::move(routineId)) {
+            code = ExprEnum::RoutineCall;
+        }
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
@@ -376,9 +378,9 @@ public:
     std::shared_ptr<Type> elemType;
 };
 
-struct ArrayAccess final : public ModifiablePrimary {
+struct ArrayAccess final : public Primary {
     ArrayAccess(const Ast& ast, Tokens::Span span)
-        : ModifiablePrimary(ast, span) {
+        : Primary(ast, span) {
             code = ExprEnum::ArrayAccess;
         }
 

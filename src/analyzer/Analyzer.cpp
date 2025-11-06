@@ -784,8 +784,16 @@ void Analyzer::validate(RoutineCall& node) {
         if (opt) node.args[i] = std::move(opt);
     }
 
-    node.type = routine.getType()->retType;
     node.ref = std::static_pointer_cast<Routine>(decl);
+    idRef_.head = &node;
+    idRef_.currType = &routine.getType()->retType;
+
+    if (node.next) {
+        idRef_.prev = &node;
+        node.next->validate(*this);
+    }
+    node.type = *idRef_.currType;
+    idRef_.head = nullptr;
 }
 
 void Analyzer::validate(ArrayType& node) {

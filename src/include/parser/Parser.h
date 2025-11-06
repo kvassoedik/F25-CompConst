@@ -40,8 +40,8 @@ private:
     std::shared_ptr<ast::Expr> parseSimple();
     std::shared_ptr<ast::Expr> parseFactor();
     std::shared_ptr<ast::Expr> parseSummand();
-    std::shared_ptr<ast::Expr> parsePrimary();
-    std::shared_ptr<ast::Expr> parseModifiablePrimaryOrRoutineCall();
+    std::shared_ptr<ast::Expr> parseSecondary();
+    std::shared_ptr<ast::Primary> parsePrimary();
     // If successful, invalidates the param!
     std::shared_ptr<ast::RoutineCall> parseRoutineCall(std::shared_ptr<Tokens::IdentifierTk>& id);
 

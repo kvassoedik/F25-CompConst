@@ -15,7 +15,7 @@ struct RecordType;
 struct IntRange;
 struct ArrayIdRange;
 struct ArrayAccess;
-struct ModifiablePrimary;
+struct Primary;
 struct IdRef;
 struct BoolLiteral;
 struct IntLiteral;

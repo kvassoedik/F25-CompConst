@@ -190,19 +190,21 @@ void DebugTree::print(ArrayIdRange& node) {
 }
 
 // === Primaries ===
-void DebugTree::print(ModifiablePrimary& node) {
-    os_ << "ModifiablePrimary_base -> " << AST_DEBUG_PTR_TO_STR(node.next)
+void DebugTree::print(Primary& node) {
+    os_ << "Primary_base -> " << AST_DEBUG_PTR_TO_STR(node.next)
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 void DebugTree::print(IdRef& node) {
     auto lock = node.ref.lock();
-    os_ << (!lock && nextModifPrimary_ != &node ? ANSI_START ANSI_RED ANSI_AND ANSI_BOLD ANSI_APPLY : "")
+    os_ << ((!lock && (nextPrimary_.back() == &node ? (nextPrimary_.pop_back(), false) : true))
+            ? ANSI_START ANSI_RED ANSI_AND ANSI_BOLD ANSI_APPLY : "")
         << "IdRef "
         << (lock ? AST_DEBUG_PTR_TO_STR(lock) : node.id + ANSI_RESET)
         << (node.next ? " -> " + AST_DEBUG_PTR_TO_STR(node.next) : "")
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 
-    nextModifPrimary_ = node.next.get();
+    if (node.next)
+        nextPrimary_.push_front(node.next.get());
 }
 
 // === Literals / Expressions ===
@@ -327,11 +329,16 @@ void DebugTree::print(RoutineCall& node) {
     }
 
     auto lock = node.ref.lock();
-    os_ << (!lock && nextModifPrimary_ != &node ? ANSI_START ANSI_RED ANSI_AND ANSI_BOLD ANSI_APPLY : "")
+    os_ << ((!lock && (nextPrimary_.back() == &node ? (nextPrimary_.pop_back(), false) : true))
+            ? ANSI_START ANSI_RED ANSI_AND ANSI_BOLD ANSI_APPLY : "")
         << "RoutineCall "
         << (lock ? AST_DEBUG_PTR_TO_STR(lock) : node.routineId+ ANSI_RESET)
         << " (" << sArgs << ")"
+        << (node.next ? " -> " + AST_DEBUG_PTR_TO_STR(node.next) : "")
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
+
+    if (node.next)
+        nextPrimary_.push_front(node.next.get());
 }
 void DebugTree::print(RoutineType& node) {
     std::string sParams;
@@ -352,10 +359,11 @@ void DebugTree::print(ArrayType& node) {
 }
 void DebugTree::print(ArrayAccess& node) {
     os_ << "ArrayAccess [" << AST_DEBUG_PTR_TO_STR(node.val) << "]"
-        << (node.next ? " ->" + AST_DEBUG_PTR_TO_STR(node.next) : "")
+        << (node.next ? " -> " + AST_DEBUG_PTR_TO_STR(node.next) : "")
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 
-    nextModifPrimary_ = node.next.get();
+    if (node.next)
+        nextPrimary_.push_front(node.next.get());
 }
 void DebugTree::print(RecordType& node) {
     std::string sMembers;

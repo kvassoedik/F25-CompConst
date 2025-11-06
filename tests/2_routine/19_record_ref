@@ -11,6 +11,8 @@ routine clone(o: obj): obj is
 	return new
 end
 
+routine func(o: obj): obj => o
+
 routine main() is
 	var o: obj
 	o.x := 6
@@ -22,6 +24,5 @@ routine main() is
 
 	// Also testing shadowing + record member access here
 	o.x := 100
-	//routine func(o: obj): obj => o
-	//print func(o2).x // 6
+	print func(o2).x // 6
 end

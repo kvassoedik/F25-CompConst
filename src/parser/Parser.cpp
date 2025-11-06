@@ -93,11 +93,14 @@ std::pair<bool, std::shared_ptr<Tokens::BaseTk>> Parser::parseEntity() {
         break;
     }
     case TokenType::Identifier: {
-        auto&& node = parseModifiablePrimaryOrRoutineCall();
+        auto&& node = parsePrimary();
         if (node) {
             tk = tokens_.get();
             if (!tk || tk->type != TokenType::ASSIGNMENT) {
-                if (node->code == ExprEnum::RoutineCall) {
+                ExprEnum code;
+                Primary* next = node.get();
+                while (next) { code = node->code; next = node->next.get(); }
+                if (code == ExprEnum::RoutineCall) {
                     currBlock_->units.push_back(std::move(node));
                     break;
                 }
@@ -109,18 +112,12 @@ std::pair<bool, std::shared_ptr<Tokens::BaseTk>> Parser::parseEntity() {
                     saveError("invalid statement", file_->eof());
                 }
                 break;
-            } else {
-                // Extra report detail: cannot assign to a return value of routine call 
-                if (node->code == ExprEnum::RoutineCall) {
-                    saveError("illegal assignment to routine return value", node->span);
-                    break;
-                }
             }
 
             tokens_.move();
 
             auto&& res = ast_->mk<Assignment>(node->span);
-            res->left = std::move(reinterpret_cast<std::shared_ptr<ModifiablePrimary>&>(node));
+            res->left = std::move(node);
             auto&& expr = parseExpr();
             if (expr) {
                 res->span.end = expr->span.end;
@@ -131,7 +128,6 @@ std::pair<bool, std::shared_ptr<Tokens::BaseTk>> Parser::parseEntity() {
                 saveError("expected expression after '='",
                             afterAssign ? afterAssign->span : res->span);
             }
-
         }
         break;
     }
@@ -744,10 +740,10 @@ std::shared_ptr<Expr> Parser::parseFactor() {
         return expr;
     }
 
-    return parsePrimary();
+    return parseSecondary();
 }
 
-std::shared_ptr<Expr> Parser::parsePrimary() {
+std::shared_ptr<Expr> Parser::parseSecondary() {
     auto&& tk = tokens_.get();
     if (!tk)
         return nullptr;
@@ -817,47 +813,47 @@ std::shared_ptr<Expr> Parser::parsePrimary() {
         return nullptr;
     }
     case TokenType::Identifier: {
-        auto&& modif = parseModifiablePrimaryOrRoutineCall();
-        return modif;
+        return parsePrimary();
     }
     }
 
     return nullptr;
 }
 
-std::shared_ptr<Expr> Parser::parseModifiablePrimaryOrRoutineCall() {
+std::shared_ptr<Primary> Parser::parsePrimary() {
     auto&& id = tokens_.get();
     if (!id || id->type != TokenType::Identifier) {
-        saveError("expected identifier",
-                id ? id->span : Tokens::Span{currBlock_->span.line, currBlock_->span.start, currBlock_->span.start+1});
+        saveError("expected identifier", id ? id->span : file_->eof());
         return nullptr;
     }
 
+    std::shared_ptr<Primary> res;
+
     auto&& tk = tokens_.moveGet();
     if (tk->type == TokenType::BRACKET_OPEN) {
-        auto res = parseRoutineCall(reinterpret_cast<std::shared_ptr<Tokens::IdentifierTk>&>(id));
-        return res;
-    }
-
-    auto&& res = ast_->mk<IdRef>(id->span, ID_STR(id));
-    std::shared_ptr<ModifiablePrimary> head = res;
+        res = parseRoutineCall(reinterpret_cast<std::shared_ptr<Tokens::IdentifierTk>&>(id));
+        if (!res)
+            return nullptr;
+    } else
+        res = ast_->mk<IdRef>(id->span, ID_STR(id));
+    std::shared_ptr<Primary>* head = &res;
 
     while (true) {
         if (!(tk = tokens_.get()))
             break;
-        
+
         if (tk->type == TokenType::DOT) {
             auto&& nextId = tokens_.moveGet();
             if (!nextId || nextId->type != TokenType::Identifier) {
                 saveError("expected field identifier after '.'",
-                            nextId ? nextId->span : Tokens::Span{tk->span.line, tk->span.end, tk->span.end+1});
+                            nextId ? nextId->span : file_->eof());
                 break;
             }
 
             tokens_.move();
             auto&& node = ast_->mk<IdRef>(nextId->span, ID_STR(nextId));
-            head->next = node;
-            head = std::move(node);
+            (*head)->next = std::move(node);
+            head = &(*head)->next;
         } else if (tk->type == TokenType::SQUARE_BRACKET_OPEN) {
             tokens_.move();
             
@@ -878,8 +874,15 @@ std::shared_ptr<Expr> Parser::parseModifiablePrimaryOrRoutineCall() {
             tokens_.move();
             node->span.end = tk->span.end;
             node->val = std::move(expr);
-            head->next = node;
-            head = std::move(node);
+            (*head)->next = std::move(node);
+            head = &(*head)->next;
+        } else if (tk->type == TokenType::BRACKET_OPEN) {
+            auto&& node = parseRoutineCall(reinterpret_cast<std::shared_ptr<Tokens::IdentifierTk>&>(id));
+            if (!node)
+                break;
+
+            (*head)->next = std::move(node);
+            head = &(*head)->next;
         } else
             break;
     }
@@ -888,14 +891,9 @@ std::shared_ptr<Expr> Parser::parseModifiablePrimaryOrRoutineCall() {
 }
 
 std::shared_ptr<RoutineCall> Parser::parseRoutineCall(std::shared_ptr<Tokens::IdentifierTk>& id) {
-    auto&& tk = tokens_.get();
-    if (!tk || tk->type != TokenType::BRACKET_OPEN) {
-        return nullptr;
-    }
-
     auto&& res = ast_->mk<RoutineCall>(id->span, ID_STR(id));
 
-    std::shared_ptr<Tokens::BaseTk> nextArgTk;
+    std::shared_ptr<Tokens::BaseTk> tk, nextArgTk;
     while ((nextArgTk = tokens_.moveGet()) != nullptr) {
         tk = std::move(nextArgTk);
         if (tk->type == TokenType::BRACKET_CLOSE) {
@@ -949,7 +947,7 @@ std::shared_ptr<PrintStmt> Parser::parsePrintStmt() {
             break;
         }
         lastExpr = std::move(nextExpr);
-        res->args.emplace_back(lastExpr);
+        res->args.push_back(lastExpr);
 
         tk = tokens_.get();
         if (!tk || tk->type == TokenType::ENDLINE || tk->type == TokenType::SEMICOLON)
