@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Ast.h"
+#include "parser/Ast.h"
 #include "lexer/Tokens.h"
 #include "lexer/TokenList.h"
 #include "FileReader.h"
@@ -9,32 +9,13 @@
 
 class Parser final {
 public:
-    Parser(std::shared_ptr<FileReader> file)
-        : file_(std::move(file)) {
-            baseTypes_.error = Ast::mk<Ast::Type>(Tokens::Span{1,0,0}, Ast::TypeEnum::ERROR);
-            baseTypes_.boolean = Ast::mk<Ast::Type>(Tokens::Span{1,0,0}, Ast::TypeEnum::Bool);
-            baseTypes_.integer = Ast::mk<Ast::Type>(Tokens::Span{1,0,0}, Ast::TypeEnum::Int);
-            baseTypes_.real = Ast::mk<Ast::Type>(Tokens::Span{1,0,0}, Ast::TypeEnum::Real);
-
-            defaultInitializers_.boolean = Ast::mk<Ast::BoolLiteral>(Tokens::Span{1,0,0}, false);
-            defaultInitializers_.integer = Ast::mk<Ast::IntLiteral>(Tokens::Span{1,0,0}, 0);
-            defaultInitializers_.real = Ast::mk<Ast::RealLiteral>(Tokens::Span{1,0,0}, 0.0);
-
-            root_ = Ast::mk<Ast::Block>(Tokens::Span{.line = 1, .start = 0, .end = file_->size()});
-            currBlock_ = root_;
-        }
+    Parser(std::shared_ptr<FileReader> file, std::shared_ptr<ast::Ast> ast)
+        : file_(std::move(file)), ast_(std::move(ast)), currBlock_(ast_->getRoot()) {}
 
     int configure(int* argc, char** argv);
     void feed(TokenList tokens) { tokens_ = std::move(tokens); }
     void run();
     bool hasErrors() const { return reporter_.hasErrors(); }
-    const std::shared_ptr<Ast::Block>& getRoot() const noexcept { return root_; }
-
-    struct BaseTypes;
-    const BaseTypes& getBaseTypes() const noexcept { return baseTypes_; }
-
-    struct DefaultInitializers;
-    const DefaultInitializers& getDefaultInitializers() const noexcept { return defaultInitializers_; };
 private:
     bool nextNode();
     void saveError(std::string reason, Tokens::Span span);
@@ -42,55 +23,46 @@ private:
     std::pair<bool, std::shared_ptr<Tokens::BaseTk>> parseEntity();
     void finalizeCurrBlock();
 
-    std::shared_ptr<Ast::Block> parseRoutineBody(Tokens::Span initSpan);
-    void parseIfBody(std::shared_ptr<Ast::IfStmt>& parent, Tokens::Span initSpan);
+    std::shared_ptr<ast::Block> parseRoutineBody(Tokens::Span initSpan);
+    void parseIfBody(std::shared_ptr<ast::IfStmt>& parent, Tokens::Span initSpan);
     // No validation of 1st tk
-    std::shared_ptr<Ast::Routine> parseRoutine();
-    std::shared_ptr<Ast::Var> parseRoutineParam();
-    std::shared_ptr<Ast::Var> parseVarDecl();
+    std::shared_ptr<ast::Routine> parseRoutine();
+    std::shared_ptr<ast::Var> parseRoutineParam();
+    std::shared_ptr<ast::Var> parseVarDecl();
     // No validation of 1st tk
-    std::shared_ptr<Ast::TypeDecl> parseTypeDecl();
+    std::shared_ptr<ast::TypeDecl> parseTypeDecl();
 
     // Guarantees non-nullptr
-    std::shared_ptr<Ast::Type> parseType();
+    std::shared_ptr<ast::Type> parseType();
 
-    std::shared_ptr<Ast::Expr> parseExpr();
-    std::shared_ptr<Ast::Expr> parseRelation();
-    std::shared_ptr<Ast::Expr> parseSimple();
-    std::shared_ptr<Ast::Expr> parseFactor();
-    std::shared_ptr<Ast::Expr> parseSummand();
-    std::shared_ptr<Ast::Expr> parsePrimary();
-    std::shared_ptr<Ast::Expr> parseModifiablePrimaryOrRoutineCall();
+    std::shared_ptr<ast::Expr> parseExpr();
+    std::shared_ptr<ast::Expr> parseRelation();
+    std::shared_ptr<ast::Expr> parseSimple();
+    std::shared_ptr<ast::Expr> parseFactor();
+    std::shared_ptr<ast::Expr> parseSummand();
+    std::shared_ptr<ast::Expr> parsePrimary();
+    std::shared_ptr<ast::Expr> parseModifiablePrimaryOrRoutineCall();
     // If successful, invalidates the param!
-    std::shared_ptr<Ast::RoutineCall> parseRoutineCall(std::shared_ptr<Tokens::IdentifierTk>& id);
+    std::shared_ptr<ast::RoutineCall> parseRoutineCall(std::shared_ptr<Tokens::IdentifierTk>& id);
 
     // No validation of 1st tk
-    std::shared_ptr<Ast::PrintStmt> parsePrintStmt();
+    std::shared_ptr<ast::PrintStmt> parsePrintStmt();
     // No validation of 1st tk
-    std::shared_ptr<Ast::IfStmt> parseIfStmt();
+    std::shared_ptr<ast::IfStmt> parseIfStmt();
     // No validation of 1st tk
-    std::shared_ptr<Ast::ForStmt> parseForStmt();
+    std::shared_ptr<ast::ForStmt> parseForStmt();
     // No validation of 1st tk
-    std::shared_ptr<Ast::WhileStmt> parseWhileStmt();
+    std::shared_ptr<ast::WhileStmt> parseWhileStmt();
     // No validation of 1st tk
-    std::shared_ptr<Ast::ReturnStmt> parseReturnStmt();
+    std::shared_ptr<ast::ReturnStmt> parseReturnStmt();
     
-    std::shared_ptr<Ast::RangeSpecifier> parseRangeSpecifier();
+    std::shared_ptr<ast::RangeSpecifier> parseRangeSpecifier();
 private:
     TokenList tokens_;
     std::vector<std::string> savedErrors_;
     std::shared_ptr<FileReader> file_;
-    std::shared_ptr<Ast::Block> root_;
-    std::shared_ptr<Ast::Block> currBlock_;
+    std::shared_ptr<ast::Ast> ast_;
+    std::shared_ptr<ast::Block> currBlock_;
     std::shared_ptr<Tokens::BaseTk> startTk_;
-    struct BaseTypes {
-        std::shared_ptr<Ast::Type> error, boolean, integer, real;
-    } baseTypes_;
-    struct DefaultInitializers {
-        std::shared_ptr<Ast::BoolLiteral> boolean;
-        std::shared_ptr<Ast::IntLiteral> integer;
-        std::shared_ptr<Ast::RealLiteral> real;
-    } defaultInitializers_;
-
     Reporter reporter_{file_};
 };

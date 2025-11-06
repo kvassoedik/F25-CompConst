@@ -1,24 +1,23 @@
 #pragma once
 
+#include "parser/Ast.h"
 #include "FileReader.h"
-
-class Parser;
 
 namespace analyzer {
 
 class Optimizer final {
 public:
-    Optimizer(std::shared_ptr<FileReader> file, Parser& parser)
-        : file_(file), parser_(parser) {}
+    Optimizer(std::shared_ptr<FileReader> file, std::shared_ptr<ast::Ast> ast)
+        : file_(file), ast_(std::move(ast)) {}
 
     int configure(int* argc, char** argv);
-    std::shared_ptr<Ast::Expr> computeExpr(Ast::Expr& expr);
-    void onBlockFinish(Ast::Block& currBlock);
-    void removeUnitFromCurrBlockLater(const Ast::Entity& node);
-    void removeUnusedDecls(Ast::Block& currBlock);
+    std::shared_ptr<ast::Expr> computeExpr(ast::Expr& expr);
+    void onBlockFinish(ast::Block& currBlock);
+    void removeUnitFromCurrBlockLater(const ast::Entity& node);
+    void removeUnusedDecls(ast::Block& currBlock);
 
     enum class AssignmentOptStatus { Skip, Fail, Success };
-    AssignmentOptStatus optimizeAssignmentAway(Ast::Assignment& node);
+    AssignmentOptStatus optimizeAssignmentAway(ast::Assignment& node);
 private:
     struct Log {
         const std::string& msg;
@@ -27,9 +26,9 @@ private:
 
     void log(const Log& log);
 private:
-    std::vector<const Ast::Entity*> unitsToBeRemoved_;
+    std::vector<const ast::Entity*> unitsToBeRemoved_;
     std::shared_ptr<FileReader> file_;
-    Parser& parser_;
+    std::shared_ptr<ast::Ast> ast_;
 
     struct {
         struct {

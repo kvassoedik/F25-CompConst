@@ -1,5 +1,6 @@
 #include "parser/DebugTree.h"
 #include "parser/Ast.h"
+#include "parser/structs.h"
 
 #if AST_DEBUG_ON
 
@@ -18,7 +19,7 @@ AST_DEBUG_PRINT_METHOD_SIGNATURE override {\
 : ("^" ANSI_START ANSI_YELLOW ANSI_APPLY "N" ANSI_RESET))
 
 
-using namespace Ast;
+using namespace ast;
 
 DebugTree::DebugTree()
     : os_(std::cout)
@@ -28,7 +29,7 @@ DebugTree::DebugTree()
     nodes_.emplace_back(nullptr);
 }
 
-void DebugTree::newNode(std::shared_ptr<Ast::Entity> node) {
+void DebugTree::newNode(std::shared_ptr<Entity> node) {
     node->debugId = globalDebugId_++;
     nodes_.push_back(std::move(node));
 }
@@ -80,7 +81,7 @@ void DebugTree::pushPrint(unsigned long debugId) {
     depthIncrement_ = true;
 }
 
-void DebugTree::printImpl(const std::shared_ptr<Ast::Entity>& node, const std::string& prefix) {
+void DebugTree::printImpl(const std::shared_ptr<Entity>& node, const std::string& prefix) {
     size_t size = depth_+1 + prefix.size();
     newline_.reserve(size);
     newline_.assign(depth_, '-');
@@ -93,14 +94,14 @@ void DebugTree::printImpl(const std::shared_ptr<Ast::Entity>& node, const std::s
     node->print(*this);
 }
 
-void DebugTree::print(Ast::Entity& node) {
+void DebugTree::print(Entity& node) {
     os_ << "<entity>"
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 
 // ---------- Node-specific printing methods ----------
 
-void DebugTree::print(Ast::Block& node) {
+void DebugTree::print(Block& node) {
     std::string sUnits, sDecls, sTypes;
 
     for (auto& unit: node.units) {
@@ -137,7 +138,7 @@ void DebugTree::print(Ast::Block& node) {
 
 // === Base / common ===
 
-void DebugTree::print(Ast::Type& node) {
+void DebugTree::print(Type& node) {
     std::string output;
     switch(node.code) {
         case TypeEnum::ERROR: {output = "<error>"; break;}
@@ -152,35 +153,35 @@ void DebugTree::print(Ast::Type& node) {
     os_ << "Type:" << output << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 
-void DebugTree::print(Ast::TypeRef& node) {
+void DebugTree::print(TypeRef& node) {
     auto lock = node.ref.lock();
     os_ << "TypeRef "
         << AST_DEBUG_PTR_TO_STR(lock) << " " << node.id
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 
-void DebugTree::print(Ast::TypeDecl& node) {
+void DebugTree::print(TypeDecl& node) {
     os_ << "type " << node.id << " is " << AST_DEBUG_PTR_TO_STR(node.type)
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 
 // === Fallbacks ===
-void DebugTree::print(Ast::Expr& node) {
+void DebugTree::print(Expr& node) {
     os_ << "Expr_base " << static_cast<int>(node.code)
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
-void DebugTree::print(Ast::RangeSpecifier& node) {
+void DebugTree::print(RangeSpecifier& node) {
     os_ << "RangeSpecifier_base"
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 
 // === Ranges / ArrayIdRange ===
-void DebugTree::print(Ast::IntRange& node) {
+void DebugTree::print(IntRange& node) {
     os_ << AST_DEBUG_PTR_TO_STR(node.start) << " .. "
         << AST_DEBUG_PTR_TO_STR(node.end)
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
-void DebugTree::print(Ast::ArrayIdRange& node) {
+void DebugTree::print(ArrayIdRange& node) {
     auto lock = node.ref.lock();
     os_ << (!lock ? ANSI_START ANSI_RED ANSI_AND ANSI_BOLD ANSI_APPLY : "")
         << "ArrayIdRange "
@@ -189,11 +190,11 @@ void DebugTree::print(Ast::ArrayIdRange& node) {
 }
 
 // === Primaries ===
-void DebugTree::print(Ast::ModifiablePrimary& node) {
+void DebugTree::print(ModifiablePrimary& node) {
     os_ << "ModifiablePrimary_base -> " << AST_DEBUG_PTR_TO_STR(node.next)
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
-void DebugTree::print(Ast::IdRef& node) {
+void DebugTree::print(IdRef& node) {
     auto lock = node.ref.lock();
     os_ << (!lock && nextModifPrimary_ != &node ? ANSI_START ANSI_RED ANSI_AND ANSI_BOLD ANSI_APPLY : "")
         << "IdRef "
@@ -205,24 +206,24 @@ void DebugTree::print(Ast::IdRef& node) {
 }
 
 // === Literals / Expressions ===
-void DebugTree::print(Ast::BoolLiteral& node) {
+void DebugTree::print(BoolLiteral& node) {
     os_ << (node.val ? "true" : "false")
         << (node.optimized ? ANSI_START ANSI_BOLD ANSI_AND ANSI_GREEN ANSI_APPLY + std::string(" (optimized)") + ANSI_RESET : "")
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
-void DebugTree::print(Ast::IntLiteral& node) {
+void DebugTree::print(IntLiteral& node) {
     os_ << "int " << node.val
         << (node.optimized ? ANSI_START ANSI_BOLD ANSI_AND ANSI_GREEN ANSI_APPLY + std::string(" (optimized)") + ANSI_RESET : "")
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
-void DebugTree::print(Ast::RealLiteral& node) {
+void DebugTree::print(RealLiteral& node) {
     os_ << "real " << node.val
         << (node.optimized ? ANSI_START ANSI_BOLD ANSI_AND ANSI_GREEN ANSI_APPLY + std::string(" (optimized)") + ANSI_RESET : "")
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 
-void DebugTree::print(Ast::BinaryExpr& node) {
-    using E = Ast::ExprEnum;
+void DebugTree::print(BinaryExpr& node) {
+    using E = ExprEnum;
     std::string op;
     switch (node.code) {
         case E::Add: op = "+"; break;
@@ -247,8 +248,8 @@ void DebugTree::print(Ast::BinaryExpr& node) {
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 
-void DebugTree::print(Ast::UnaryExpr& node) {
-    using E = Ast::ExprEnum;
+void DebugTree::print(UnaryExpr& node) {
+    using E = ExprEnum;
     std::string op;
     switch (node.code) {
         case E::Negate: op = "-"; break;
@@ -260,12 +261,12 @@ void DebugTree::print(Ast::UnaryExpr& node) {
 }
 
 // === Statements ===
-void DebugTree::print(Ast::Decl& node) {
+void DebugTree::print(Decl& node) {
     os_ << "decl " << node.id
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 
-void DebugTree::print(Ast::PrintStmt& node) {
+void DebugTree::print(PrintStmt& node) {
     std::string sArgs;
     for (size_t i = 0; i < node.args.size(); ++i) {
         sArgs += AST_DEBUG_PTR_TO_STR(node.args[i]);
@@ -275,50 +276,50 @@ void DebugTree::print(Ast::PrintStmt& node) {
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 
-void DebugTree::print(Ast::IfStmt& node) {
+void DebugTree::print(IfStmt& node) {
     os_ << "if " << AST_DEBUG_PTR_TO_STR(node.condition)
         << " then " << AST_DEBUG_PTR_TO_STR(node.body);
     if (node.elseBody) os_ << " else " << AST_DEBUG_PTR_TO_STR(node.elseBody);
     os_ << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
-void DebugTree::print(Ast::WhileStmt& node) {
+void DebugTree::print(WhileStmt& node) {
     os_ << "while " << AST_DEBUG_PTR_TO_STR(node.condition)
         << " loop " << AST_DEBUG_PTR_TO_STR(node.body)
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
-void DebugTree::print(Ast::ForStmt& node) {
+void DebugTree::print(ForStmt& node) {
     os_ << "for " << AST_DEBUG_PTR_TO_STR(node.counter)
         << " in " << AST_DEBUG_PTR_TO_STR(node.range)
         << (node.reverse ? " reverse " : " ")
         << "loop " << AST_DEBUG_PTR_TO_STR(node.body)
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
-void DebugTree::print(Ast::ReturnStmt& node) {
+void DebugTree::print(ReturnStmt& node) {
     os_ << "return " << AST_DEBUG_PTR_TO_STR(node.val)
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
-void DebugTree::print(Ast::Assignment& node) {
+void DebugTree::print(Assignment& node) {
     os_ << AST_DEBUG_PTR_TO_STR(node.left)
         << " := " << AST_DEBUG_PTR_TO_STR(node.val)
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 
 // === Decls / Routine / Calls ===
-void DebugTree::print(Ast::Var& node) {
+void DebugTree::print(Var& node) {
     os_ << "var " << node.id << ": "
         << AST_DEBUG_PTR_TO_STR(node.type)
         << " is " << AST_DEBUG_PTR_TO_STR(node.val)
         << (!node.everUsed ? ANSI_START ANSI_BOLD ANSI_AND ANSI_GREEN ANSI_APPLY + std::string(" (never used)") + ANSI_RESET : "")
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
-void DebugTree::print(Ast::Routine& node) {
+void DebugTree::print(Routine& node) {
     os_ << "routine " << node.id
         << " " << AST_DEBUG_PTR_TO_STR(node.type)
         << " is " << AST_DEBUG_PTR_TO_STR(node.body)
         << (!node.everUsed ? ANSI_START ANSI_BOLD ANSI_AND ANSI_GREEN ANSI_APPLY + std::string(" (never used)") + ANSI_RESET : "")
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
-void DebugTree::print(Ast::RoutineCall& node) {
+void DebugTree::print(RoutineCall& node) {
     std::string sArgs;
     for (size_t i = 0; i < node.args.size(); ++i) {
         sArgs += AST_DEBUG_PTR_TO_STR(node.args[i]);
@@ -332,7 +333,7 @@ void DebugTree::print(Ast::RoutineCall& node) {
         << " (" << sArgs << ")"
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
-void DebugTree::print(Ast::RoutineType& node) {
+void DebugTree::print(RoutineType& node) {
     std::string sParams;
     for (size_t i = 0; i < node.params.size(); ++i) {
         sParams += AST_DEBUG_PTR_TO_STR(node.params[i]);
@@ -344,19 +345,19 @@ void DebugTree::print(Ast::RoutineType& node) {
 }
 
 // === Array / Record ===
-void DebugTree::print(Ast::ArrayType& node) {
+void DebugTree::print(ArrayType& node) {
     os_ << "array[" << AST_DEBUG_PTR_TO_STR(node.size) << "]: "
         << AST_DEBUG_PTR_TO_STR(node.elemType)
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
-void DebugTree::print(Ast::ArrayAccess& node) {
+void DebugTree::print(ArrayAccess& node) {
     os_ << "ArrayAccess [" << AST_DEBUG_PTR_TO_STR(node.val) << "]"
         << (node.next ? " ->" + AST_DEBUG_PTR_TO_STR(node.next) : "")
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 
     nextModifPrimary_ = node.next.get();
 }
-void DebugTree::print(Ast::RecordType& node) {
+void DebugTree::print(RecordType& node) {
     std::string sMembers;
     for (size_t i = 0; i < node.members.size(); ++i) {
         sMembers += AST_DEBUG_PTR_TO_STR(node.members[i]);

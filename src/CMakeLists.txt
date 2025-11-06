@@ -11,6 +11,7 @@ set(LIB_NAME ${PROJECT_NAME}_lib)
 add_library(${LIB_NAME}
     ${CMAKE_SOURCE_DIR}/lexer/Lexer.cpp
     ${CMAKE_SOURCE_DIR}/lexer/Token.cpp
+    ${CMAKE_SOURCE_DIR}/parser/Ast.cpp
     ${CMAKE_SOURCE_DIR}/parser/Parser.cpp
     ${CMAKE_SOURCE_DIR}/parser/Printer.cpp
     ${CMAKE_SOURCE_DIR}/parser/DebugTree.cpp

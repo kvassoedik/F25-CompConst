@@ -1,6 +1,6 @@
 #pragma once
 
-namespace Ast {
+namespace ast {
 
 struct Entity;
 struct Type;

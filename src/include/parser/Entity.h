@@ -1,11 +1,10 @@
 #pragma once
 
 #include "lexer/Tokens.h"
-#include "parser/DebugTree.h"
-#include "utils/PrintingUtils.h"
 #include "analyzer/Analyzer.h"
+#include "utils/PrintingUtils.h"
 
-namespace Ast {
+namespace ast {
 
 struct Entity {
     Entity(Tokens::Span span)

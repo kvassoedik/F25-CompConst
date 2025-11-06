@@ -1,10 +1,11 @@
 #include "parser/Parser.h"
+#include "parser/structs.h"
 #include "analyzer/Optimizer.h"
 #include "analyzer/utils.h"
 #include <functional>
 
 using namespace analyzer;
-using namespace Ast;
+using namespace ast;
 using std::shared_ptr;
 
 int Optimizer::configure(int* argc, char** argv) {
@@ -63,11 +64,10 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
         auto right = e.right->knownPrimitive ? e.right : computeExpr(*e.right);
         if (left && right) {
             if (e.type->code == TypeEnum::Int) {
-                auto res = mk<IntLiteral>(
+                auto res = ast_->mk<IntLiteral>(
                     Tokens::Span{e.span.line, e.span.start, e.span.start+1},
                     operation.integer(left, right)
                 );
-                res->type = parser_.getBaseTypes().integer;
 #if AST_DEBUG_ON
                 res->optimized = true;
 #endif
@@ -81,11 +81,10 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
                 return res;
             }
 
-            auto res = mk<RealLiteral>(
+            auto res = ast_->mk<RealLiteral>(
                 Tokens::Span{e.span.line, e.span.start, e.span.start+1},
                 operation.real(left, right)
             );
-            res->type = parser_.getBaseTypes().real;
 #if AST_DEBUG_ON
             res->optimized = true;
 #endif
@@ -109,13 +108,12 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
         auto left = e.left->knownPrimitive ? e.left : computeExpr(*e.left);
         auto right = e.right->knownPrimitive ? e.right : computeExpr(*e.right);
         if (left && right) {
-            auto res = mk<BoolLiteral>(
+            auto res = ast_->mk<BoolLiteral>(
                 Tokens::Span{e.span.line, e.span.start, e.span.start+1},
                 e.type->code == TypeEnum::Int
                     ? operation.integer(left, right)
                     : operation.real(left, right)
             );
-            res->type = parser_.getBaseTypes().boolean;
 #if AST_DEBUG_ON
             res->optimized = true;
 #endif
@@ -142,14 +140,13 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
         auto left = e.left->knownPrimitive ? e.left : computeExpr(*e.left);
         auto right = e.right->knownPrimitive ? e.right : computeExpr(*e.right);
         if (left && right) {
-            auto res = mk<BoolLiteral>(
+            auto res = ast_->mk<BoolLiteral>(
                 Tokens::Span{e.span.line, e.span.start, e.span.start+1},
                 operation(
                     std::static_pointer_cast<BoolLiteral>(left),
                     std::static_pointer_cast<BoolLiteral>(right)
                 )
             );
-            res->type = parser_.getBaseTypes().boolean;
 #if AST_DEBUG_ON
             res->optimized = true;
 #endif
@@ -213,11 +210,10 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
             break;
 
         if (opt->type->code == TypeEnum::Int) {
-            auto res = mk<IntLiteral>(
+            auto res = ast_->mk<IntLiteral>(
                 Tokens::Span{e.span.line, e.span.start, e.span.start+1},
                 -INT_REAL_CASE(opt)
             );
-            res->type = parser_.getBaseTypes().integer;
 #if AST_DEBUG_ON
             res->optimized = true;
 #endif
@@ -231,11 +227,10 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
             return res;
         }
 
-        auto res = mk<RealLiteral>(
+        auto res = ast_->mk<RealLiteral>(
             Tokens::Span{e.span.line, e.span.start, e.span.start+1},
             -INT_REAL_CASE(opt)
         );
-        res->type = parser_.getBaseTypes().real;
 #if AST_DEBUG_ON
         res->optimized = true;
 #endif
@@ -254,11 +249,10 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
         if (!opt)
             break;
 
-        auto res = mk<BoolLiteral>(
+        auto res = ast_->mk<BoolLiteral>(
             Tokens::Span{e.span.line, e.span.start, e.span.start+1},
             !static_cast<BoolLiteral&>(*opt).val
         );
-        res->type = parser_.getBaseTypes().boolean;
 #if AST_DEBUG_ON
         res->optimized = true;
 #endif
@@ -368,11 +362,10 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
                     log({"computing " + std::to_string(INT_REAL_CASE(left)) + " == " + std::to_string(INT_REAL_CASE(right)), e.span});
             }
 
-            auto res = mk<BoolLiteral>(
+            auto res = ast_->mk<BoolLiteral>(
                 Tokens::Span{e.span.line, e.span.start, e.span.start+1},
                 areValuesEqual(e, left, right)
             );
-            res->type = parser_.getBaseTypes().boolean;
 #if AST_DEBUG_ON
             res->optimized = true;
 #endif
@@ -403,11 +396,10 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
                     log({"computing " + std::to_string(INT_REAL_CASE(left)) + " /= " + std::to_string(INT_REAL_CASE(right)), e.span});
             }
 
-            auto res = mk<BoolLiteral>(
+            auto res = ast_->mk<BoolLiteral>(
                 Tokens::Span{e.span.line, e.span.start, e.span.start+1},
                 !areValuesEqual(e, left, right)
             );
-            res->type = parser_.getBaseTypes().boolean;
 #if AST_DEBUG_ON
             res->optimized = true;
 #endif
@@ -431,7 +423,7 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
 #undef INT_REAL_CASE
 }
 
-void Optimizer::onBlockFinish(Ast::Block& currBlock) {
+void Optimizer::onBlockFinish(Block& currBlock) {
     // Removing redundant statements
     std::vector<std::list<std::shared_ptr<Entity>>::const_iterator> rm;
     for (auto it = currBlock.units.cbegin(); it != currBlock.units.end(); ++it) {
@@ -471,7 +463,7 @@ void Optimizer::removeUnusedDecls(Block& currBlock) {
         currBlock.declMap.erase(*id);
 }
 
-Optimizer::AssignmentOptStatus Optimizer::optimizeAssignmentAway(Ast::Assignment& node) {
+Optimizer::AssignmentOptStatus Optimizer::optimizeAssignmentAway(Assignment& node) {
     auto parent = static_cast<IdRef&>(*node.left).ref.lock();
     if (!parent)
         return AssignmentOptStatus::Skip;

@@ -4,9 +4,9 @@
 #include <iostream>
 
 #define AST_PRINTTYPE_METHOD \
-virtual void printType(::Ast::Printer::options o) { ::Ast::Printer::printType(*this, o); }
+virtual void printType(::ast::Printer::options o) { ::ast::Printer::printType(*this, o); }
 
-namespace Ast {
+namespace ast {
 namespace Printer {
 
 struct PrinterOptions {
@@ -15,13 +15,13 @@ struct PrinterOptions {
 using options = const PrinterOptions&;
 
 #define AST_PRINTER_OPTIONS_DEFAULT_CONSTR \
-::Ast::Printer::PrinterOptions{.os = std::cout}
+::ast::Printer::PrinterOptions{.os = std::cout}
 
-void printType(Ast::Type& node, options o = AST_PRINTER_OPTIONS_DEFAULT_CONSTR);
-void printType(Ast::TypeRef& node, options o = AST_PRINTER_OPTIONS_DEFAULT_CONSTR);
-void printType(Ast::RoutineType& node, options o = AST_PRINTER_OPTIONS_DEFAULT_CONSTR);
-void printType(Ast::ArrayType& node, options o = AST_PRINTER_OPTIONS_DEFAULT_CONSTR);
-void printType(Ast::RecordType& node, options o = AST_PRINTER_OPTIONS_DEFAULT_CONSTR);
+void printType(Type& node, options o = AST_PRINTER_OPTIONS_DEFAULT_CONSTR);
+void printType(TypeRef& node, options o = AST_PRINTER_OPTIONS_DEFAULT_CONSTR);
+void printType(RoutineType& node, options o = AST_PRINTER_OPTIONS_DEFAULT_CONSTR);
+void printType(ArrayType& node, options o = AST_PRINTER_OPTIONS_DEFAULT_CONSTR);
+void printType(RecordType& node, options o = AST_PRINTER_OPTIONS_DEFAULT_CONSTR);
 
 #undef AST_PRINTER_OPTIONS_DEFAULT_CONSTR
 

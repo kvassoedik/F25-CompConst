@@ -1,9 +1,7 @@
 #pragma once
 
-#include "FileReader.h"
-#include "parser/fwd_structs.h"
-#include "report/Report.h"
 #include "analyzer/Optimizer.h"
+#include "report/Report.h"
 #include <memory>
 #include <unordered_map>
 
@@ -12,59 +10,57 @@ void validate(::analyzer::Analyzer& analyzer)
 #define AST_VALIDATE_METHOD \
 void validate(::analyzer::Analyzer& analyzer) final override { analyzer.validate(*this); }
 
-class Parser;
-
 namespace analyzer {
 
 class Analyzer final {
 public:
-    Analyzer(std::shared_ptr<FileReader> file, Parser& parser, Optimizer& optimizer)
-        : file_(std::move(file)), parser_(parser), optimizer_(optimizer) {}
+    Analyzer(std::shared_ptr<FileReader> file, std::shared_ptr<ast::Ast> ast, Optimizer& optimizer)
+        : file_(std::move(file)), ast_(std::move(ast)), optimizer_(optimizer) {}
 
     int configure(int* argc, char** argv);
     void run();
     bool hasErrors() const { return reporter_.hasErrors(); };
 
-    void validate(Ast::TypeRef& node);
-    void validate(Ast::TypeDecl& node);
-    void validate(Ast::Block& node);
-    void validate(Ast::IntRange& node);
-    void validate(Ast::ArrayIdRange& node);
-    void validate(Ast::IdRef& node);
-    void validate(Ast::BinaryExpr& node);
-    void validate(Ast::UnaryExpr& node);
-    void validate(Ast::PrintStmt& node);
-    void validate(Ast::IfStmt& node);
-    void validate(Ast::WhileStmt& node);
-    void validate(Ast::ForStmt& node);
-    void validate(Ast::ReturnStmt& node);
-    void validate(Ast::Assignment& node);
-    void validate(Ast::Var& node);
-    void validate(Ast::Routine& node);
-    void validate(Ast::RoutineCall& node);
-    void validate(Ast::ArrayType& node);
-    void validate(Ast::ArrayAccess& node);
-    void validate(Ast::RecordType& node);
+    void validate(ast::TypeRef& node);
+    void validate(ast::TypeDecl& node);
+    void validate(ast::Block& node);
+    void validate(ast::IntRange& node);
+    void validate(ast::ArrayIdRange& node);
+    void validate(ast::IdRef& node);
+    void validate(ast::BinaryExpr& node);
+    void validate(ast::UnaryExpr& node);
+    void validate(ast::PrintStmt& node);
+    void validate(ast::IfStmt& node);
+    void validate(ast::WhileStmt& node);
+    void validate(ast::ForStmt& node);
+    void validate(ast::ReturnStmt& node);
+    void validate(ast::Assignment& node);
+    void validate(ast::Var& node);
+    void validate(ast::Routine& node);
+    void validate(ast::RoutineCall& node);
+    void validate(ast::ArrayType& node);
+    void validate(ast::ArrayAccess& node);
+    void validate(ast::RecordType& node);
 private:
-    std::shared_ptr<Ast::Decl> searchDeclaration(const std::string& id);
+    std::shared_ptr<ast::Decl> searchDeclaration(const std::string& id);
     void invalidateKnownVarsInCurrBlock();
-    void invalidateKnownVarByRef(Ast::IdRef& node);
+    void invalidateKnownVarByRef(ast::IdRef& node);
     void saveError(std::string reason, Tokens::Span span);
-    void validateType(std::shared_ptr<Ast::Type>& t);
+    void validateType(std::shared_ptr<ast::Type>& t);
 private:
     std::shared_ptr<FileReader> file_;
-    std::shared_ptr<Ast::Block> root_{nullptr};
-    Ast::Block* currBlock_;
+    std::shared_ptr<ast::Block> root_{nullptr};
+    ast::Block* currBlock_;
     struct {
-        Ast::IdRef* head{nullptr};
-        Ast::ModifiablePrimary* prev;
-        const std::shared_ptr<Ast::Type>* currType;
+        ast::IdRef* head{nullptr};
+        ast::ModifiablePrimary* prev;
+        const std::shared_ptr<ast::Type>* currType;
     } idRef_;
-    Ast::Routine* currRoutine_{nullptr};
-    std::unordered_map<std::string, std::shared_ptr<Ast::Routine>> undefinedRoutines_;
+    ast::Routine* currRoutine_{nullptr};
+    std::unordered_map<std::string, std::shared_ptr<ast::Routine>> undefinedRoutines_;
     std::unordered_set<std::string> recordMemberNames_;
     Reporter reporter_{file_};
-    Parser& parser_;
+    std::shared_ptr<ast::Ast> ast_;
     Optimizer& optimizer_;
     bool deadCode_{false};
     bool analyzingRoutineParams_{false};

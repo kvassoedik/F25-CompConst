@@ -1,26 +1,28 @@
 #pragma once
 
 #include "parser/Entity.h"
+#include "parser/Ast.h"
 #include "parser/Printer.h"
-#include "parser/DebugTree.h"
 #include <vector>
 #include <list>
 #include <memory>
 #include <unordered_map>
 #include <algorithm>
 
-namespace Ast {
+namespace ast {
 
 struct Decl : public Entity, public std::enable_shared_from_this<Decl> {
-    Decl(Tokens::Span span, std::string id)
-        : Entity(span), id(std::move(id)) {}
+    Decl(const Ast& ast, Tokens::Span span, std::string id)
+        : Entity(span), id(std::move(id)) {
+            type = ast.getBaseTypes().error;
+        }
 
 #if AST_DEBUG_ON
     AST_DEBUGTREE_PRINT_METHOD_SIGNATURE override = 0;
 #endif
 public:
     std::string id;
-    std::shared_ptr<Type> type{nullptr};
+    std::shared_ptr<Type> type;
     bool isRoutine{false}; // declarations can be either routine or var
     bool everUsed{false};
 };
@@ -39,7 +41,7 @@ enum class TypeEnum {
 };
 
 struct Type : public Entity {
-    Type(Tokens::Span span, TypeEnum code)
+    Type(const Ast& ast, Tokens::Span span, TypeEnum code)
         : Entity(span), code(code) {}
 
     AST_DEBUGTREE_PRINT_METHOD
@@ -49,9 +51,9 @@ public:
 };
 
 struct TypeRef final : public Type {
-    TypeRef(Tokens::Span span, std::string id)
-        : Type(span, TypeEnum::REFERENCE), id(std::move(id)) {}
-    
+    TypeRef(const Ast& ast, Tokens::Span span, std::string id)
+        : Type(ast, span, TypeEnum::REFERENCE), id(std::move(id)) {}
+
     AST_DEBUGTREE_PRINT_METHOD
     AST_PRINTTYPE_METHOD
     AST_VALIDATE_METHOD
@@ -61,22 +63,22 @@ public:
 };
 
 struct TypeDecl final : public Decl {
-    TypeDecl(Tokens::Span span, std::string id)
-        : Decl(span, std::move(id)) {}
+    TypeDecl(const Ast& ast, Tokens::Span span, std::string id)
+        : Decl(ast, span, std::move(id)) {}
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
 };
 
 struct Block final : public Entity {
-    Block(Tokens::Span span)
+    Block(const Ast& ast, Tokens::Span span)
         : Entity(span) {}
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
 public:
     std::list<std::shared_ptr<Entity>> units;
-    std::unordered_map<std::string, std::shared_ptr<Ast::Decl>> declMap;
+    std::unordered_map<std::string, std::shared_ptr<Decl>> declMap;
     std::unordered_map<std::string, std::shared_ptr<TypeDecl>> typeMap;
     std::weak_ptr<Block> parent;
 };
@@ -114,27 +116,27 @@ enum class ExprEnum {
 };
 
 struct Expr : public Entity {
-    Expr(Tokens::Span span)
-        : Entity(span) {}
-    Expr(Tokens::Span span, ExprEnum code, std::shared_ptr<Type> type = nullptr)
-        : Entity(span), code(code), type(std::move(type)) {}
+    Expr(const Ast& ast, Tokens::Span span, ExprEnum code)
+        : Entity(span), code(code) {
+            type = ast.getBaseTypes().error;
+        }
 
     AST_DEBUGTREE_PRINT_METHOD
 public:
-    std::shared_ptr<Type> type{nullptr};
+    std::shared_ptr<Type> type;
     ExprEnum code;
     bool knownPrimitive{false};
 };
 
 struct RangeSpecifier : public Entity {
-    RangeSpecifier(Tokens::Span span)
+    RangeSpecifier(const Ast& ast, Tokens::Span span)
         : Entity(span) {}
 
     AST_DEBUGTREE_PRINT_METHOD
 };
 struct IntRange final : public RangeSpecifier {
-    IntRange(Tokens::Span span)
-        : RangeSpecifier(span) {}
+    IntRange(const Ast& ast, Tokens::Span span)
+        : RangeSpecifier(ast, span) {}
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
@@ -143,8 +145,8 @@ public:
     std::shared_ptr<Expr> end{nullptr};
 };
 struct ArrayIdRange final : public RangeSpecifier {
-    ArrayIdRange(Tokens::Span span)
-        : RangeSpecifier(span) {}
+    ArrayIdRange(const Ast& ast, Tokens::Span span)
+        : RangeSpecifier(ast, span) {}
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
@@ -154,8 +156,8 @@ public:
 };
 
 struct ModifiablePrimary : public Expr {
-    ModifiablePrimary(Tokens::Span span)
-        : Expr(span) {}
+    ModifiablePrimary(const Ast& ast, Tokens::Span span)
+        : Expr(ast, span, ExprEnum::ERROR) {}
 
     AST_DEBUGTREE_PRINT_METHOD
 public:
@@ -163,8 +165,8 @@ public:
 };
 
 struct IdRef final: public ModifiablePrimary {
-    IdRef(Tokens::Span span, std::string id)
-        : ModifiablePrimary(span), id(std::move(id)) {
+    IdRef(const Ast& ast, Tokens::Span span, std::string id)
+        : ModifiablePrimary(ast, span), id(std::move(id)) {
             code = ExprEnum::IdRef;
         }
 
@@ -176,9 +178,10 @@ public:
 };
 
 struct BoolLiteral final: public Expr {
-    BoolLiteral(Tokens::Span span, bool val)
-        : Expr(span, ExprEnum::BoolLiteral), val(val) {
+    BoolLiteral(const Ast& ast, Tokens::Span span, bool val)
+        : Expr(ast, span, ExprEnum::BoolLiteral), val(val) {
             knownPrimitive = true;
+            type = ast.getBaseTypes().boolean;
         }
 
     AST_DEBUGTREE_PRINT_METHOD
@@ -189,9 +192,10 @@ public:
 #endif
 };
 struct IntLiteral final: public Expr {
-    IntLiteral(Tokens::Span span, long val)
-        : Expr(span, ExprEnum::IntLiteral), val(val) {
+    IntLiteral(const Ast& ast, Tokens::Span span, long val)
+        : Expr(ast, span, ExprEnum::IntLiteral), val(val) {
             knownPrimitive = true;
+            type = ast.getBaseTypes().integer;
         }
 
     AST_DEBUGTREE_PRINT_METHOD
@@ -202,9 +206,10 @@ public:
 #endif
 };
 struct RealLiteral final: public Expr {
-    RealLiteral(Tokens::Span span, double val)
-        : Expr(span, ExprEnum::RealLiteral), val(val) {
+    RealLiteral(const Ast& ast, Tokens::Span span, double val)
+        : Expr(ast, span, ExprEnum::RealLiteral), val(val) {
             knownPrimitive = true;
+            type = ast.getBaseTypes().real;
         }
 
     AST_DEBUGTREE_PRINT_METHOD
@@ -216,8 +221,8 @@ public:
 };
 
 struct BinaryExpr final: public Expr {
-    BinaryExpr(Tokens::Span span, ExprEnum code)
-        : Expr(span, code) {}
+    BinaryExpr(const Ast& ast, Tokens::Span span, ExprEnum code)
+        : Expr(ast, span, code) {}
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
@@ -226,8 +231,8 @@ public:
     std::shared_ptr<Expr> right{nullptr};
 };
 struct UnaryExpr final: public Expr {
-    UnaryExpr(Tokens::Span span, ExprEnum code)
-        : Expr(span, code) {}
+    UnaryExpr(const Ast& ast, Tokens::Span span, ExprEnum code)
+        : Expr(ast, span, code) {}
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
@@ -238,7 +243,7 @@ public:
 /************************************ Statement ************************************/
 
 struct PrintStmt final : public Entity {
-    PrintStmt(Tokens::Span span)
+    PrintStmt(const Ast& ast, Tokens::Span span)
         : Entity(span) {}
 
     AST_DEBUGTREE_PRINT_METHOD
@@ -248,7 +253,7 @@ public:
 };
 
 struct IfStmt final : public Entity {
-    IfStmt(Tokens::Span span)
+    IfStmt(const Ast& ast, Tokens::Span span)
         : Entity(span) {}
 
     AST_DEBUGTREE_PRINT_METHOD
@@ -260,7 +265,7 @@ public:
 };
 
 struct WhileStmt final : public Entity {
-    WhileStmt(Tokens::Span span)
+    WhileStmt(const Ast& ast, Tokens::Span span)
         : Entity(span) {}
 
     AST_DEBUGTREE_PRINT_METHOD
@@ -271,7 +276,7 @@ public:
 };
 
 struct ForStmt final : public Entity {
-    ForStmt(Tokens::Span span)
+    ForStmt(const Ast& ast, Tokens::Span span)
         : Entity(span) {}
 
     AST_DEBUGTREE_PRINT_METHOD
@@ -284,7 +289,7 @@ public:
 };
 
 struct ReturnStmt final : public Entity {
-    ReturnStmt(Tokens::Span span)
+    ReturnStmt(const Ast& ast, Tokens::Span span)
         : Entity(span) {}
 
     AST_DEBUGTREE_PRINT_METHOD
@@ -294,7 +299,7 @@ public:
 };
 
 struct Assignment final : public Entity {
-    Assignment(Tokens::Span span)
+    Assignment(const Ast& ast, Tokens::Span span)
         : Entity(span) {}
 
     AST_DEBUGTREE_PRINT_METHOD
@@ -307,8 +312,8 @@ public:
 /************************************ Var ************************************/
 
 struct Var final : public Decl {
-    Var(Tokens::Span span, std::string id)
-        : Decl(span, std::move(id)) {}
+    Var(const Ast& ast, Tokens::Span span, std::string id)
+        : Decl(ast, span, std::move(id)) {}
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
@@ -320,8 +325,8 @@ public:
 /************************************ Routine ************************************/
 
 struct Routine final : public Decl {
-    Routine(Tokens::Span span, std::string id)
-        : Decl(span, std::move(id)) {
+    Routine(const Ast& ast, Tokens::Span span, std::string id)
+        : Decl(ast, span, std::move(id)) {
             isRoutine = true;
         }
 
@@ -333,8 +338,8 @@ public:
 };
 
 struct RoutineCall final : public Expr {
-    RoutineCall(Tokens::Span span, std::string routineId)
-        : Expr(span, ExprEnum::RoutineCall), routineId(std::move(routineId)) {}
+    RoutineCall(const Ast& ast, Tokens::Span span, std::string routineId)
+        : Expr(ast, span, ExprEnum::RoutineCall), routineId(std::move(routineId)) {}
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
@@ -345,8 +350,8 @@ public:
 };
 
 struct RoutineType final : public Type {
-    RoutineType(Tokens::Span span)
-        : Type(span, TypeEnum::Routine) {}
+    RoutineType(const Ast& ast, Tokens::Span span)
+        : Type(ast, span, TypeEnum::Routine) {}
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_PRINTTYPE_METHOD
@@ -358,20 +363,22 @@ public:
 /************************************ Array ************************************/
 
 struct ArrayType final: public Type {
-    ArrayType(Tokens::Span span)
-        : Type(span, TypeEnum::Array) {}
+    ArrayType(const Ast& ast, Tokens::Span span)
+        : Type(ast, span, TypeEnum::Array) {
+            elemType = ast.getBaseTypes().error;
+        }
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_PRINTTYPE_METHOD
     AST_VALIDATE_METHOD
 public:
     std::shared_ptr<Expr> size{nullptr};
-    std::shared_ptr<Type> elemType{nullptr};
+    std::shared_ptr<Type> elemType;
 };
 
 struct ArrayAccess final : public ModifiablePrimary {
-    ArrayAccess(Tokens::Span span)
-        : ModifiablePrimary(span) {
+    ArrayAccess(const Ast& ast, Tokens::Span span)
+        : ModifiablePrimary(ast, span) {
             code = ExprEnum::ArrayAccess;
         }
 
@@ -384,8 +391,8 @@ public:
 /************************************ Record ************************************/
 
 struct RecordType final : public Type {
-    RecordType(Tokens::Span span)
-        : Type(span, TypeEnum::Record) {}
+    RecordType(const Ast& ast, Tokens::Span span)
+        : Type(ast, span, TypeEnum::Record) {}
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_PRINTTYPE_METHOD

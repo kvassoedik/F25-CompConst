@@ -32,7 +32,7 @@ int main(int argc, char **argv) {
     }
 
     char* fileName = argv[argc - 1];
-    auto&& file = std::make_shared<FileReader>(fileName);
+    auto file = std::make_shared<FileReader>(fileName);
     if (!file->isOpen()) {
         std::cerr << "Could not open a file " << fileName << "\n";
         return 2;
@@ -42,15 +42,17 @@ int main(int argc, char **argv) {
     if (lexer.configure(&argc, argv) != 0)
         return 3;
 
-    Parser parser(file);
+    auto ast = std::make_shared<ast::Ast>();
+
+    Parser parser(file, ast);
     if (parser.configure(&argc, argv) != 0)
         return 3;
 
-    analyzer::Optimizer optimizer(file, parser);
+    analyzer::Optimizer optimizer(file, ast);
     if (optimizer.configure(&argc, argv) != 0)
         return 3;
 
-    analyzer::Analyzer analyzer(file, parser, optimizer);
+    analyzer::Analyzer analyzer(file, ast, optimizer);
     if (analyzer.configure(&argc, argv) != 0)
         return 3;
 
@@ -83,6 +85,6 @@ int main(int argc, char **argv) {
     if (analyzer.hasErrors())
         return 5;
 #if AST_DEBUG_ON
-    Ast::debugInfo.printAll();
+    ast::debugInfo.printAll();
 #endif
 }

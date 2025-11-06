@@ -1,11 +1,12 @@
 #include "parser/Printer.h"
 #include "parser/Ast.h"
+#include "parser/structs.h"
 #include <sstream>
 
-using namespace Ast;
-using Ast::Printer::options;
+using namespace ast;
+using ast::Printer::options;
 
-void Ast::Printer::printType(Ast::Type& node, options o) {
+void Printer::printType(Type& node, options o) {
     std::string output;
     switch(node.code) {
         case TypeEnum::ERROR: {output = "<error>"; break;}
@@ -20,7 +21,7 @@ void Ast::Printer::printType(Ast::Type& node, options o) {
     o.os << output;
 }
 
-void Ast::Printer::printType(Ast::TypeRef& node, options o) {
+void Printer::printType(TypeRef& node, options o) {
     std::stringstream output;
     output << node.id << " (aka ";
     auto lock = node.ref.lock();
@@ -32,7 +33,7 @@ void Ast::Printer::printType(Ast::TypeRef& node, options o) {
     o.os << output.str();
 }
 
-void Ast::Printer::printType(Ast::RoutineType& node, options o) {
+void Printer::printType(RoutineType& node, options o) {
     std::stringstream output;
     output << "routine(";
     for (size_t i = 0; i < node.params.size(); ++i) {
@@ -49,18 +50,18 @@ void Ast::Printer::printType(Ast::RoutineType& node, options o) {
     o.os << output.str();
 }
 
-void Ast::Printer::printType(Ast::ArrayType& node, options o) {
+void Printer::printType(ArrayType& node, options o) {
     std::stringstream output;
     output << "array[";
     if (node.size) {
-        output << (node.size->knownPrimitive ? std::to_string(static_cast<Ast::IntLiteral&>(*node.size).val) : "??");
+        output << (node.size->knownPrimitive ? std::to_string(static_cast<IntLiteral&>(*node.size).val) : "??");
     }
     output << "]: ";
     node.elemType->printType({.os = output});
     o.os << output.str();
 }
 
-void Ast::Printer::printType(Ast::RecordType& node, options o) {
+void Printer::printType(RecordType& node, options o) {
     std::stringstream output;
     output << "record{";
     for (size_t i = 0; i < node.members.size(); ++i) {

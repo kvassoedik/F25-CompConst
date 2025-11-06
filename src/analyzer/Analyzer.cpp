@@ -1,16 +1,17 @@
 #include "parser/Parser.h"
+#include "parser/structs.h"
 #include "analyzer/Analyzer.h"
 #include "analyzer/utils.h"
 
 using namespace analyzer;
-using namespace Ast;
+using namespace ast;
 
 int Analyzer::configure(int* argc, char** argv) {
     return 0;
 }
 
 void Analyzer::run() {
-    root_ = parser_.getRoot();
+    root_ = ast_->getRoot();
     currBlock_ = root_.get();
     validate(*currBlock_);
 
@@ -72,7 +73,7 @@ std::shared_ptr<Decl> Analyzer::searchDeclaration(const std::string& id) {
 void Analyzer::invalidateKnownVarsInCurrBlock() {
     for (auto& it: currBlock_->declMap) {
         if (it.second->isRoutine) continue;
-        std::static_pointer_cast<Var>(it.second)->knownPrimitive = false;
+        static_cast<Var&>(*it.second).knownPrimitive = false;
     }
 }
 
@@ -80,17 +81,15 @@ void Analyzer::invalidateKnownVarByRef(IdRef& node) {
     auto it = currBlock_->declMap.find(node.id);
     if (it == currBlock_->declMap.end() || it->second->isRoutine)
         return;
-    std::static_pointer_cast<Var>(it->second)->knownPrimitive = false;
+    static_cast<Var&>(*it->second).knownPrimitive = false;
 }
 
-void Analyzer::validateType(std::shared_ptr<Ast::Type>& t) {
+void Analyzer::validateType(std::shared_ptr<Type>& t) {
     t->validate(*this);
     if (t->code == TypeEnum::REFERENCE) {
         auto lock = static_cast<TypeRef&>(*t).ref.lock();
         if (lock)
             t = lock->type;
-        else
-            t = parser_.getBaseTypes().error;
     }
 }
 
@@ -186,7 +185,6 @@ void Analyzer::validate(IdRef& node) {
     if (!idRef_.head) {
         auto decl = searchDeclaration(node.id);
         if (!decl) {
-            node.type = parser_.getBaseTypes().error;
             saveError(
                 "use of undeclared identifier: " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + node.id + ANSI_RESET,
                 node.span
@@ -210,7 +208,7 @@ void Analyzer::validate(IdRef& node) {
             if ((*idRef_.currType)->code == TypeEnum::Array
                 && node.id == "size")
             {
-                idRef_.currType = &parser_.getBaseTypes().integer;
+                idRef_.currType = &ast_->getBaseTypes().integer;
                 if (node.next) {
                     idRef_.prev = &node;
                     node.next->validate(*this);
@@ -226,7 +224,7 @@ void Analyzer::validate(IdRef& node) {
                 + ANSI_START ANSI_BOLD ANSI_APPLY + stringifyType(*idRef_.currType) + ANSI_RESET,
                 node.span
             );
-            idRef_.currType = &parser_.getBaseTypes().error;
+            idRef_.currType = &ast_->getBaseTypes().error;
             return;
         }
 
@@ -244,7 +242,7 @@ void Analyzer::validate(IdRef& node) {
                 + ANSI_START ANSI_BOLD ANSI_APPLY + node.id + ANSI_RESET + "'",
                 node.span
             );
-            idRef_.currType = &parser_.getBaseTypes().error;
+            idRef_.currType = &ast_->getBaseTypes().error;
             return;
         }
 
@@ -264,10 +262,7 @@ void Analyzer::validate(BinaryExpr& node) {
     
     if (!expr.left->type || expr.left->type->code == TypeEnum::ERROR
         || !expr.right->type || expr.right->type->code == TypeEnum::ERROR)
-    {
-        expr.type = parser_.getBaseTypes().error;
         return;
-    }
 
     switch (node.code) {
     case ExprEnum::Add:
@@ -277,7 +272,6 @@ void Analyzer::validate(BinaryExpr& node) {
         if ((expr.left->type->code != TypeEnum::Int && expr.left->type->code != TypeEnum::Real)
             || (expr.right->type->code != TypeEnum::Int && expr.right->type->code != TypeEnum::Real)
         ) {
-            expr.type = parser_.getBaseTypes().error;
             saveError(
                 "binary operator used with incompatible types: " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
                 + stringifyType(expr.left->type)
@@ -289,14 +283,13 @@ void Analyzer::validate(BinaryExpr& node) {
         }
 
         if (expr.left->type->code == TypeEnum::Real || expr.right->type->code == TypeEnum::Real)
-            expr.type = parser_.getBaseTypes().real;
+            expr.type = ast_->getBaseTypes().real;
         else
-            expr.type = parser_.getBaseTypes().integer;
+            expr.type = ast_->getBaseTypes().integer;
         break;
     }
     case ExprEnum::Modulo: {
         if (expr.left->type->code != TypeEnum::Int || expr.right->type->code != TypeEnum::Int) {
-            expr.type = parser_.getBaseTypes().error;
             saveError(
                 "modulo operator can only be applied to integers, but got: " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
                 + stringifyType(expr.left->type)
@@ -308,9 +301,9 @@ void Analyzer::validate(BinaryExpr& node) {
         }
 
         if (expr.left->type->code == TypeEnum::Real || expr.right->type->code == TypeEnum::Real)
-            expr.type = parser_.getBaseTypes().real;
+            expr.type = ast_->getBaseTypes().real;
         else
-            expr.type = parser_.getBaseTypes().integer;
+            expr.type = ast_->getBaseTypes().integer;
         break;
     }
     case ExprEnum::And:
@@ -328,7 +321,7 @@ void Analyzer::validate(BinaryExpr& node) {
             );
         }
 
-        expr.type = parser_.getBaseTypes().boolean;
+        expr.type = ast_->getBaseTypes().boolean;
         break;
     }
     case ExprEnum::LESS_THAN:
@@ -347,7 +340,7 @@ void Analyzer::validate(BinaryExpr& node) {
             );
         }
 
-        expr.type = parser_.getBaseTypes().boolean;
+        expr.type = ast_->getBaseTypes().boolean;
         break;
     }
     case ExprEnum::EQUAL:
@@ -366,7 +359,7 @@ void Analyzer::validate(BinaryExpr& node) {
             );
         }
 
-        expr.type = parser_.getBaseTypes().boolean;
+        expr.type = ast_->getBaseTypes().boolean;
         break;
     }
     }
@@ -378,7 +371,6 @@ void Analyzer::validate(UnaryExpr& node) {
     switch (node.code) {
     case ExprEnum::Negate: {
         if (node.val->type->code != TypeEnum::Int && node.val->type->code != TypeEnum::Real) {
-            node.type = parser_.getBaseTypes().error;
             saveError(
                 "unary minus applied to non-numeric type; actual: "
                 + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
@@ -393,7 +385,6 @@ void Analyzer::validate(UnaryExpr& node) {
     }
     case ExprEnum::Not: {
         if (node.val->type->code != TypeEnum::Bool) {
-            node.type = parser_.getBaseTypes().error;
             saveError(
                 "'not' applied to non-boolean type; actual: "
                 + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
@@ -402,7 +393,7 @@ void Analyzer::validate(UnaryExpr& node) {
             );
             return;
         }
-        node.type = parser_.getBaseTypes().boolean;
+        node.type = ast_->getBaseTypes().boolean;
 
         break;
     }
@@ -479,7 +470,7 @@ void Analyzer::validate(ForStmt& node) {
     }
 
     node.body->declMap.emplace(node.counter->id, node.counter);
-    node.counter->type = parser_.getBaseTypes().integer;
+    node.counter->type = ast_->getBaseTypes().integer;
     node.range->validate(*this);
     node.body->validate(*this);
 }
@@ -496,7 +487,6 @@ void Analyzer::validate(ReturnStmt& node) {
         node.val->validate(*this);
 
         if (!currRoutine_->getType()->retType) {
-            currRoutine_->getType()->retType = parser_.getBaseTypes().error;
             saveError(
                 "in routine " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + currRoutine_->id
                 + ANSI_RESET + ": return value specified, but routine does not return anything",
@@ -642,13 +632,13 @@ void Analyzer::validate(Var& node) {
 
         if (node.type->code == TypeEnum::Bool) {
             node.knownPrimitive = true;
-            node.val = parser_.getDefaultInitializers().boolean;
+            node.val = ast_->getDefaultInitializers().boolean;
         } else if (node.type->code == TypeEnum::Int) {
             node.knownPrimitive = true;
-            node.val = parser_.getDefaultInitializers().integer;
+            node.val = ast_->getDefaultInitializers().integer;
         } else if (node.type->code == TypeEnum::Real) {
             node.knownPrimitive = true;
-            node.val = parser_.getDefaultInitializers().real;
+            node.val = ast_->getDefaultInitializers().real;
         }
     }
 }
@@ -715,6 +705,7 @@ void Analyzer::validate(Routine& node) {
     analyzingRoutineParams_ = true;
     for (auto& param: node.getType()->params) {
         param->validate(*this);
+        param->everUsed = true;
         if (isErrorType(param->type))
             saveError("routine parameter has <error> type", param->span);
     }
@@ -743,7 +734,6 @@ void Analyzer::validate(RoutineCall& node) {
 
     auto decl = searchDeclaration(node.routineId);
     if (!decl) {
-        node.type = parser_.getBaseTypes().error;
         saveError("use of undeclared identifier: "
             + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + node.routineId + ANSI_RESET,
             node.span
@@ -751,7 +741,6 @@ void Analyzer::validate(RoutineCall& node) {
         return;
     }
     if (!decl->isRoutine) {
-        node.type = parser_.getBaseTypes().error;
         saveError("attempt to call a variable that is not a routine " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
             + node.routineId + ANSI_RESET,
             node.span
@@ -834,7 +823,7 @@ void Analyzer::validate(ArrayType& node) {
 
 void Analyzer::validate(ArrayAccess& node) {
     if ((*idRef_.currType)->code != TypeEnum::Array) {
-        idRef_.currType = &parser_.getBaseTypes().error;
+        idRef_.currType = &ast_->getBaseTypes().error;
         saveError(
             "type " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
             + stringifyType(*idRef_.currType) + ANSI_RESET + "is not an array",
@@ -899,8 +888,6 @@ void Analyzer::validate(RecordType& node) {
         if (member->type)
             validateType(member->type);
         if (member->val) {
-            if (!member->type)
-                member->type = parser_.getBaseTypes().error;
             saveError("record type members cannot have initializers", member->val->span);
         }
     }

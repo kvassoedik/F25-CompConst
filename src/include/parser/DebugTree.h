@@ -1,6 +1,12 @@
 #pragma once
 
 #include "parser/debug.h"
+
+#define AST_DEBUGTREE_PRINT_METHOD_SIGNATURE
+#define AST_DEBUGTREE_PRINT_METHOD
+
+#if AST_DEBUG_ON
+
 #include "parser/fwd_structs.h"
 #include "utils/PrintingUtils.h"
 #include <iostream>
@@ -9,65 +15,60 @@
 #include <vector>
 #include <queue>
 
-#define AST_DEBUGTREE_PRINT_METHOD_SIGNATURE
-#define AST_DEBUGTREE_PRINT_METHOD
-
-#if AST_DEBUG_ON
-
 #undef AST_DEBUGTREE_PRINT_METHOD_SIGNATURE
 #define AST_DEBUGTREE_PRINT_METHOD_SIGNATURE \
-void print(::Ast::DebugTree& debugTree)
+void print(::ast::DebugTree& debugTree)
 
 #undef AST_DEBUGTREE_PRINT_METHOD
 #define AST_DEBUGTREE_PRINT_METHOD \
-void print(::Ast::DebugTree& debugTree) override { debugTree.print(*this); }
+void print(::ast::DebugTree& debugTree) override { debugTree.print(*this); }
 
-namespace Ast {
+namespace ast {
 
 class DebugTree final {
 public:
     DebugTree();
-    void newNode(std::shared_ptr<Ast::Entity> node);
+    void newNode(std::shared_ptr<Entity> node);
     void printAll();
     void pushPrint(unsigned long debugId);
 
     // ---------- Node-specific printing methods ----------
     
-    void print(Ast::Entity& node);
-    void print(Ast::Type& node);
-    void print(Ast::Expr& node);
-    void print(Ast::RangeSpecifier& node);
-    void print(Ast::Block& node);
-    void print(Ast::Decl& node);
-    void print(Ast::TypeRef& node);
-    void print(Ast::TypeDecl& node);
-    void print(Ast::ArrayType& node);
-    void print(Ast::RecordType& node);
-    void print(Ast::IntRange& node);
-    void print(Ast::ArrayIdRange& node);
-    void print(Ast::ArrayAccess& node);
-    void print(Ast::ModifiablePrimary& node);
-    void print(Ast::IdRef& node);
-    void print(Ast::BoolLiteral& node);
-    void print(Ast::IntLiteral& node);
-    void print(Ast::RealLiteral& node);
-    void print(Ast::BinaryExpr& node);
-    void print(Ast::UnaryExpr& node);
-    void print(Ast::PrintStmt& node);
-    void print(Ast::IfStmt& node);
-    void print(Ast::WhileStmt& node);
-    void print(Ast::ForStmt& node);
-    void print(Ast::ReturnStmt& node);
-    void print(Ast::Assignment& node);
-    void print(Ast::Var& node);
-    void print(Ast::Routine& node);
-    void print(Ast::RoutineCall& node);
-    void print(Ast::RoutineType& node);
+    void print(Entity& node);
+    void print(Type& node);
+    void print(Expr& node);
+    void print(RangeSpecifier& node);
+    void print(Block& node);
+    void print(Decl& node);
+    void print(TypeRef& node);
+    void print(TypeDecl& node);
+    void print(ArrayType& node);
+    void print(RecordType& node);
+    void print(IntRange& node);
+    void print(ArrayIdRange& node);
+    void print(ArrayAccess& node);
+    void print(ModifiablePrimary& node);
+    void print(IdRef& node);
+    void print(BoolLiteral& node);
+    void print(IntLiteral& node);
+    void print(RealLiteral& node);
+    void print(BinaryExpr& node);
+    void print(UnaryExpr& node);
+    void print(PrintStmt& node);
+    void print(IfStmt& node);
+    void print(WhileStmt& node);
+    void print(ForStmt& node);
+    void print(ReturnStmt& node);
+    void print(Assignment& node);
+    void print(Var& node);
+    void print(Routine& node);
+    void print(RoutineCall& node);
+    void print(RoutineType& node);
 
 private:
-    void printImpl(const std::shared_ptr<Ast::Entity>& node, const std::string& prefix);
+    void printImpl(const std::shared_ptr<Entity>& node, const std::string& prefix);
 private:
-    std::vector<std::shared_ptr<Ast::Entity>> nodes_;
+    std::vector<std::shared_ptr<Entity>> nodes_;
 
     struct DepthElem {
         unsigned long debugId;
@@ -88,7 +89,7 @@ private:
     unsigned int depth_{0};
     bool depthIncrement_{false};
     bool isCurrOrphan_{false};
-    const Ast::Entity* nextModifPrimary_{nullptr};
+    const Entity* nextModifPrimary_{nullptr};
 };
 
 // GLOBAL VARIABLE
