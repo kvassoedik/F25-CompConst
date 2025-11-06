@@ -1,14 +1,19 @@
 // 0 10.0 5.0
 
 var myvar is 0
-routine func() is
-    var myvar is 10.0
+routine func(a: integer) is
+    // Demonstating compile-time optimizations
+    var myvar is 10
     print myvar
+    var x is myvar
+    x := 1
+    x := myvar + a
+    print x + a
     myvar := myvar / 2
     print myvar
 end
 
 routine main() is
     print myvar
-    func()
+    func(1)
 end

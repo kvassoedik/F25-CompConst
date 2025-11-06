@@ -17,7 +17,7 @@ public:
     void removeUnusedDecls(ast::Block& currBlock);
 
     enum class AssignmentOptStatus { Skip, Fail, Success };
-    AssignmentOptStatus optimizeAssignmentAway(ast::Assignment& node);
+    AssignmentOptStatus optimizeAssignmentAway(ast::Assignment& node, std::shared_ptr<ast::Decl>& decl, bool firstTimeUsed);
 private:
     struct Log {
         const std::string& msg;

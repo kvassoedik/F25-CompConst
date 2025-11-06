@@ -41,7 +41,7 @@ void Analyzer::run() {
             saveError("'main' routine cannot have parameters", it->second->span);
             return;
         }
-        it->second->everUsed = true;
+        it->second->useCount++;
     }
 
     optimizer_.onBlockFinish(*root_);
@@ -177,7 +177,7 @@ void Analyzer::validate(ArrayIdRange& node) {
         );
     }
 
-    decl->everUsed = true;
+    decl->useCount++;
     node.ref = std::static_pointer_cast<Var>(decl);
 }
 
@@ -192,7 +192,7 @@ void Analyzer::validate(IdRef& node) {
             return;
         }
 
-        decl->everUsed = true;
+        decl->useCount++;
         node.ref = decl;
         idRef_.head = &node;
         idRef_.currType = &decl->type;
@@ -530,6 +530,10 @@ void Analyzer::validate(Assignment& node) {
         return;
     }
 
+    auto decl = static_cast<IdRef&>(*node.left).ref.lock();
+    bool firstTimeUsed = decl &&
+        --decl->useCount == 0;
+
     node.val->validate(*this);
     if (node.val->type->code == TypeEnum::ERROR) {
         invalidateKnownVarByRef(static_cast<IdRef&>(*node.left));
@@ -570,14 +574,14 @@ void Analyzer::validate(Assignment& node) {
             
             invalidateKnownVarByRef(static_cast<IdRef&>(*node.left));
             saveError(
-                "assignment of integer to boolean is only allowed if the left side is evaluated at compile-time and is either 0 or 1",
+                "assignment of integer to boolean is only allowed if the right side is evaluated at compile-time and is either 0 or 1",
                 node.val->span
             );
             return;
         }
     }
 
-    Optimizer::AssignmentOptStatus res = optimizer_.optimizeAssignmentAway(node);
+    Optimizer::AssignmentOptStatus res = optimizer_.optimizeAssignmentAway(node, decl, firstTimeUsed);
     if (res == Optimizer::AssignmentOptStatus::Skip)
         invalidateKnownVarByRef(static_cast<IdRef&>(*node.left));
     else if (res == Optimizer::AssignmentOptStatus::Fail) {
@@ -705,7 +709,7 @@ void Analyzer::validate(Routine& node) {
     analyzingRoutineParams_ = true;
     for (auto& param: node.getType()->params) {
         param->validate(*this);
-        param->everUsed = true;
+        param->useCount++;
         if (isErrorType(param->type))
             saveError("routine parameter has <error> type", param->span);
     }
@@ -719,7 +723,7 @@ void Analyzer::validate(Routine& node) {
     if (it != currBlock_->declMap.end()) {
         static_cast<Routine&>(*it->second).body = std::move(node.body);
         static_cast<Routine&>(*it->second).type = std::move(node.type);
-        node.everUsed = false;
+        node.useCount = 0;
         optimizer_.removeUnitFromCurrBlockLater(node);
     }
 }
@@ -729,8 +733,6 @@ void Analyzer::validate(RoutineCall& node) {
         saveError("routine call in global scope is illegal", node.span);
         return;
     }
-
-    invalidateKnownVarsInCurrBlock();
 
     auto decl = searchDeclaration(node.routineId);
     if (!decl) {
@@ -748,7 +750,7 @@ void Analyzer::validate(RoutineCall& node) {
         return;
     }
 
-    decl->everUsed = true;
+    decl->useCount++;
     auto& routine = static_cast<Routine&>(*decl);
 
     if (routine.getType()->params.size() != node.args.size()) {
@@ -882,7 +884,7 @@ void Analyzer::validate(ArrayAccess& node) {
 
 void Analyzer::validate(RecordType& node) {
     for (auto& member: node.members) {
-        member->everUsed = true;
+        member->useCount++;
 
         auto [_, inserted] = recordMemberNames_.insert(member->id);
         if (!inserted) {

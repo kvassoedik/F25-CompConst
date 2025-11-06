@@ -210,17 +210,17 @@ void DebugTree::print(IdRef& node) {
 // === Literals / Expressions ===
 void DebugTree::print(BoolLiteral& node) {
     os_ << (node.val ? "true" : "false")
-        << (node.optimized ? ANSI_START ANSI_BOLD ANSI_AND ANSI_GREEN ANSI_APPLY + std::string(" (optimized)") + ANSI_RESET : "")
+        << (node.debug_optimized ? ANSI_START ANSI_BOLD ANSI_AND ANSI_GREEN ANSI_APPLY + std::string(" (optimized)") + ANSI_RESET : "")
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 void DebugTree::print(IntLiteral& node) {
     os_ << "int " << node.val
-        << (node.optimized ? ANSI_START ANSI_BOLD ANSI_AND ANSI_GREEN ANSI_APPLY + std::string(" (optimized)") + ANSI_RESET : "")
+        << (node.debug_optimized ? ANSI_START ANSI_BOLD ANSI_AND ANSI_GREEN ANSI_APPLY + std::string(" (optimized)") + ANSI_RESET : "")
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 void DebugTree::print(RealLiteral& node) {
     os_ << "real " << node.val
-        << (node.optimized ? ANSI_START ANSI_BOLD ANSI_AND ANSI_GREEN ANSI_APPLY + std::string(" (optimized)") + ANSI_RESET : "")
+        << (node.debug_optimized ? ANSI_START ANSI_BOLD ANSI_AND ANSI_GREEN ANSI_APPLY + std::string(" (optimized)") + ANSI_RESET : "")
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 
@@ -311,14 +311,14 @@ void DebugTree::print(Var& node) {
     os_ << "var " << node.id << ": "
         << AST_DEBUG_PTR_TO_STR(node.type)
         << " is " << AST_DEBUG_PTR_TO_STR(node.val)
-        << (!node.everUsed ? ANSI_START ANSI_BOLD ANSI_AND ANSI_GREEN ANSI_APPLY + std::string(" (never used)") + ANSI_RESET : "")
+        << (!node.useCount ? ANSI_START ANSI_BOLD ANSI_AND ANSI_GREEN ANSI_APPLY + std::string(" (never used)") + ANSI_RESET : "")
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 void DebugTree::print(Routine& node) {
     os_ << "routine " << node.id
         << " " << AST_DEBUG_PTR_TO_STR(node.type)
         << " is " << AST_DEBUG_PTR_TO_STR(node.body)
-        << (!node.everUsed ? ANSI_START ANSI_BOLD ANSI_AND ANSI_GREEN ANSI_APPLY + std::string(" (never used)") + ANSI_RESET : "")
+        << (!node.useCount ? ANSI_START ANSI_BOLD ANSI_AND ANSI_GREEN ANSI_APPLY + std::string(" (never used)") + ANSI_RESET : "")
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
 void DebugTree::print(RoutineCall& node) {

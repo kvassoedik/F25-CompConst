@@ -14,6 +14,8 @@ namespace ast {
 struct Decl : public Entity, public std::enable_shared_from_this<Decl> {
     Decl(const Ast& ast, Tokens::Span span, std::string id)
         : Entity(span), id(std::move(id)) {
+            // by default, all types stored initially are all error
+            // to avoid unexpected behaviour when scaling
             type = ast.getBaseTypes().error;
         }
 
@@ -23,8 +25,8 @@ struct Decl : public Entity, public std::enable_shared_from_this<Decl> {
 public:
     std::string id;
     std::shared_ptr<Type> type;
+    unsigned useCount{0};
     bool isRoutine{false}; // declarations can be either routine or var
-    bool everUsed{false};
 };
 
 enum class TypeEnum {
@@ -188,7 +190,7 @@ struct BoolLiteral final: public Expr {
 public:
     bool val;
 #if AST_DEBUG_ON
-    bool optimized{false};
+    bool debug_optimized{false};
 #endif
 };
 struct IntLiteral final: public Expr {
@@ -202,7 +204,7 @@ struct IntLiteral final: public Expr {
 public:
     long val;
 #if AST_DEBUG_ON
-    bool optimized{false};
+    bool debug_optimized{false};
 #endif
 };
 struct RealLiteral final: public Expr {
@@ -216,7 +218,7 @@ struct RealLiteral final: public Expr {
 public:
     double val;
 #if AST_DEBUG_ON
-    bool optimized{false};
+    bool debug_optimized{false};
 #endif
 };
 

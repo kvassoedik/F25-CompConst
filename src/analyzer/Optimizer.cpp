@@ -59,17 +59,14 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
         std::function< decltype(RealLiteral::val) (shared_ptr<Expr> a, shared_ptr<Expr> b) > real;
     };
     auto optimizeNumericBinary = [&expr, this](NumericBinaryOperation operation) -> shared_ptr<Expr> {
-        auto e = static_cast<BinaryExpr&>(expr);
+        auto& e = static_cast<BinaryExpr&>(expr);
         auto left = e.left->knownPrimitive ? e.left : computeExpr(*e.left);
         auto right = e.right->knownPrimitive ? e.right : computeExpr(*e.right);
         if (left && right) {
             if (e.type->code == TypeEnum::Int) {
-                auto res = ast_->mk<IntLiteral>(
-                    Tokens::Span{e.span.line, e.span.start, e.span.start+1},
-                    operation.integer(left, right)
-                );
+                auto res = ast_->mk<IntLiteral>(e.span, operation.integer(left, right));
 #if AST_DEBUG_ON
-                res->optimized = true;
+                res->debug_optimized = true;
 #endif
                 if (config_.logs.computations)
                     log({
@@ -81,12 +78,9 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
                 return res;
             }
 
-            auto res = ast_->mk<RealLiteral>(
-                Tokens::Span{e.span.line, e.span.start, e.span.start+1},
-                operation.real(left, right)
-            );
+            auto res = ast_->mk<RealLiteral>(e.span, operation.real(left, right));
 #if AST_DEBUG_ON
-            res->optimized = true;
+            res->debug_optimized = true;
 #endif
             if (config_.logs.computations)
                 log({
@@ -104,18 +98,17 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
     };
 
     auto optimizeNumericComparison = [&expr, this](NumericBinaryOperation operation) -> shared_ptr<Expr> {
-        auto e = static_cast<BinaryExpr&>(expr);
+        auto& e = static_cast<BinaryExpr&>(expr);
         auto left = e.left->knownPrimitive ? e.left : computeExpr(*e.left);
         auto right = e.right->knownPrimitive ? e.right : computeExpr(*e.right);
         if (left && right) {
-            auto res = ast_->mk<BoolLiteral>(
-                Tokens::Span{e.span.line, e.span.start, e.span.start+1},
+            auto res = ast_->mk<BoolLiteral>(e.span,
                 e.type->code == TypeEnum::Int
                     ? operation.integer(left, right)
                     : operation.real(left, right)
             );
 #if AST_DEBUG_ON
-            res->optimized = true;
+            res->debug_optimized = true;
 #endif
             if (config_.logs.computations)
                 log({
@@ -136,19 +129,18 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
         bool (shared_ptr<BoolLiteral> a, shared_ptr<BoolLiteral> b)>
         operation
     ) -> shared_ptr<Expr> {
-        auto e = static_cast<BinaryExpr&>(expr);
+        auto& e = static_cast<BinaryExpr&>(expr);
         auto left = e.left->knownPrimitive ? e.left : computeExpr(*e.left);
         auto right = e.right->knownPrimitive ? e.right : computeExpr(*e.right);
         if (left && right) {
-            auto res = ast_->mk<BoolLiteral>(
-                Tokens::Span{e.span.line, e.span.start, e.span.start+1},
+            auto res = ast_->mk<BoolLiteral>(e.span,
                 operation(
                     std::static_pointer_cast<BoolLiteral>(left),
                     std::static_pointer_cast<BoolLiteral>(right)
                 )
             );
 #if AST_DEBUG_ON
-            res->optimized = true;
+            res->debug_optimized = true;
 #endif
             if (config_.logs.computations)
                 log({
@@ -178,7 +170,7 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
         }
         default:
             throw std::runtime_error(
-                "Optimizer::optimizeExpr: unsupported compile-time equality type check: " + stringifyType(e.type)
+                "Optimizer::computeExpr: unsupported compile-time equality type check: " + stringifyType(e.type)
             );
         }
     };
@@ -193,13 +185,33 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
         if (!ref->knownPrimitive)
             break;
 
+        std::shared_ptr<Expr> res;
+#if AST_DEBUG_ON
+        // Creating a separate node for visual purposes; mark it as optimized
+        if (ref->val->code == ExprEnum::BoolLiteral) {
+            res = ast_->mk<BoolLiteral>(expr.span, static_cast<BoolLiteral*>(ref->val.get())->val);
+            static_cast<BoolLiteral*>(res.get())->debug_optimized = true;
+        } else if (ref->val->code == ExprEnum::IntLiteral) {
+            res = ast_->mk<IntLiteral>(expr.span, static_cast<IntLiteral*>(ref->val.get())->val);
+            static_cast<IntLiteral*>(res.get())->debug_optimized = true;
+        } else if (ref->val->code == ExprEnum::RealLiteral) {
+            res = ast_->mk<RealLiteral>(expr.span, static_cast<RealLiteral*>(ref->val.get())->val);
+            static_cast<RealLiteral*>(res.get())->debug_optimized = true;
+        } else
+            throw std::runtime_error("Optimizer::computeExpr: invalid knownPrimitive type encountered when optimizing IdRef");
+#else
+        res = ref->val;
+#endif
+
         if (config_.logs.computations)
             log({
 #if AST_DEBUG_ON
-                    std::string("[") + std::to_string(ref->val ? ref->val->debugId : 0) + "] " +
+                    std::string("[") + std::to_string(res->debugId) + "] " +
 #endif
-                    "passed identifier '" + ref->id + "' value", ref->span});
-        return ref->val;
+                    "passed identifier '" + ref->id + "' value", expr.span});
+
+        ref->useCount--;
+        return res;
     }
     case ExprEnum::Negate: {
         auto e = static_cast<UnaryExpr&>(expr);
@@ -210,12 +222,9 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
             break;
 
         if (opt->type->code == TypeEnum::Int) {
-            auto res = ast_->mk<IntLiteral>(
-                Tokens::Span{e.span.line, e.span.start, e.span.start+1},
-                -INT_REAL_CASE(opt)
-            );
+            auto res = ast_->mk<IntLiteral>(e.span, -INT_REAL_CASE(opt));
 #if AST_DEBUG_ON
-            res->optimized = true;
+            res->debug_optimized = true;
 #endif
             if (config_.logs.computations)
                 log({
@@ -227,12 +236,9 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
             return res;
         }
 
-        auto res = ast_->mk<RealLiteral>(
-            Tokens::Span{e.span.line, e.span.start, e.span.start+1},
-            -INT_REAL_CASE(opt)
-        );
+        auto res = ast_->mk<RealLiteral>(e.span, -INT_REAL_CASE(opt));
 #if AST_DEBUG_ON
-        res->optimized = true;
+        res->debug_optimized = true;
 #endif
         if (config_.logs.computations)
             log({
@@ -249,12 +255,9 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
         if (!opt)
             break;
 
-        auto res = ast_->mk<BoolLiteral>(
-            Tokens::Span{e.span.line, e.span.start, e.span.start+1},
-            !static_cast<BoolLiteral&>(*opt).val
-        );
+        auto res = ast_->mk<BoolLiteral>(e.span, !static_cast<BoolLiteral&>(*opt).val);
 #if AST_DEBUG_ON
-        res->optimized = true;
+        res->debug_optimized = true;
 #endif
         if (config_.logs.computations)
                 log({
@@ -362,12 +365,9 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
                     log({"computing " + std::to_string(INT_REAL_CASE(left)) + " == " + std::to_string(INT_REAL_CASE(right)), e.span});
             }
 
-            auto res = ast_->mk<BoolLiteral>(
-                Tokens::Span{e.span.line, e.span.start, e.span.start+1},
-                areValuesEqual(e, left, right)
-            );
+            auto res = ast_->mk<BoolLiteral>(e.span, areValuesEqual(e, left, right));
 #if AST_DEBUG_ON
-            res->optimized = true;
+            res->debug_optimized = true;
 #endif
             if (config_.logs.computations)
                 log({
@@ -396,12 +396,9 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
                     log({"computing " + std::to_string(INT_REAL_CASE(left)) + " /= " + std::to_string(INT_REAL_CASE(right)), e.span});
             }
 
-            auto res = ast_->mk<BoolLiteral>(
-                Tokens::Span{e.span.line, e.span.start, e.span.start+1},
-                !areValuesEqual(e, left, right)
-            );
+            auto res = ast_->mk<BoolLiteral>(e.span, !areValuesEqual(e, left, right));
 #if AST_DEBUG_ON
-            res->optimized = true;
+            res->debug_optimized = true;
 #endif
             if (config_.logs.computations)
                 log({
@@ -448,7 +445,8 @@ void Optimizer::removeUnusedDecls(Block& currBlock) {
 
     std::vector<const std::string*> rm;
     for (auto& decl: currBlock.declMap) {
-        if (decl.second->everUsed) continue;
+        if (decl.second->useCount > 0)
+            continue;
 
         auto it = std::find(currBlock.units.begin(), currBlock.units.end(), decl.second);
         if (it != currBlock.units.end())
@@ -463,13 +461,12 @@ void Optimizer::removeUnusedDecls(Block& currBlock) {
         currBlock.declMap.erase(*id);
 }
 
-Optimizer::AssignmentOptStatus Optimizer::optimizeAssignmentAway(Assignment& node) {
-    auto parent = static_cast<IdRef&>(*node.left).ref.lock();
-    if (!parent)
+Optimizer::AssignmentOptStatus Optimizer::optimizeAssignmentAway(Assignment& node, std::shared_ptr<Decl>& decl, bool firstTimeUsed) {
+    if (!decl)
         return AssignmentOptStatus::Skip;
 
-    auto& var = static_cast<Var&>(*parent);
-    if (var.knownPrimitive) {
+    auto& var = static_cast<Var&>(*decl);
+    if (var.knownPrimitive && firstTimeUsed) {
         if (node.val->knownPrimitive) {
             var.val = node.val;
             unitsToBeRemoved_.push_back(&node);
