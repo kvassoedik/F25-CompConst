@@ -2,6 +2,7 @@
 #include "lexer/TokenList.h"
 #include "parser/Parser.h"
 #include "analyzer/Analyzer.h"
+#include "codegen/Codegen.h"
 #include <iostream>
 
 int main(int argc, char **argv) {
@@ -56,6 +57,10 @@ int main(int argc, char **argv) {
     if (analyzer.configure(&argc, argv) != 0)
         return 3;
 
+    codegen::Codegen codegen(ast);
+    if (codegen.configure(&argc, argv) != 0)
+        return 3;
+
     // Lexer stage
     std::vector<std::shared_ptr<Tokens::BaseTk>> tokens;
     try {
@@ -87,4 +92,6 @@ int main(int argc, char **argv) {
 #if AST_DEBUG_ON
     ast::debugInfo.printAll();
 #endif
+
+    codegen.run();
 }

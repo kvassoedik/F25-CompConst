@@ -2,6 +2,7 @@
 
 #include "lexer/Tokens.h"
 #include "analyzer/Analyzer.h"
+#include "codegen/visitor.h"
 #include "utils/PrintingUtils.h"
 
 namespace ast {
@@ -12,6 +13,7 @@ struct Entity {
     virtual ~Entity() {}
 
     virtual AST_VALIDATE_METHOD_SIGNATURE {}
+    virtual CODEGEN_METHOD_SIGNATURE {}
 #if AST_DEBUG_ON
     virtual AST_DEBUGTREE_PRINT_METHOD_SIGNATURE = 0;
 #endif

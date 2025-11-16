@@ -319,6 +319,7 @@ struct Var final : public Decl {
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
+    CODEGEN_METHOD
 public:
     std::shared_ptr<Expr> val{nullptr};
     bool knownPrimitive{false};
