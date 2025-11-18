@@ -35,7 +35,10 @@ private:
             bool computations{false};
             bool unusedDecls{false};
         } logs;
-        bool disabled{false};
+        struct {
+            bool computations{true};
+            bool unusedDecls{true};
+        } toggles;
     } config_;
 };
 

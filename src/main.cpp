@@ -22,11 +22,14 @@ int main(int argc, char **argv) {
             "   options:\n"
             "       -h  - display help\n"
             "       -lx - configure Lexer\n"
-            "           V    - configure log verbosity level [0-2]\n";
+            "           V    - configure log verbosity level [0-2]\n"
             "       -O - configure Optimizer\n"
-            "           V    - enable specific logs\n";
-            "               comput    - compile-time computation optimizations\n";
-            "               unused    - removal of unused declarations\n";
+            "           V    - enable specific logs\n"
+            "               comput    - compile-time computation optimizations\n"
+            "               unused    - removal of unused declarations\n"
+            "           t    - toggle optimization features\n"
+            "               comput (disable)\n"
+            "               unused (disable)\n";
 
             return 0;
         }
@@ -93,5 +96,6 @@ int main(int argc, char **argv) {
     ast::debugInfo.printAll();
 #endif
 
+    std::cout << "\n" << ANSI_START ANSI_GREEN ANSI_APPLY << std::string(28, '-') << " LLVM DUMP " << std::string(28, '-') << "\n\n" << ANSI_RESET;
     codegen.run();
 }

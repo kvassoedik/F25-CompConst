@@ -1,12 +1,11 @@
-#include "parser/Printer.h"
 #include "parser/Ast.h"
 #include "parser/structs.h"
 #include <sstream>
 
 using namespace ast;
-using ast::Printer::options;
+using ast::srlz::options;
 
-void Printer::printType(Type& node, options o) {
+void srlz::type(const Type& node, options o) {
     std::string output;
     switch(node.code) {
         case TypeEnum::ERROR: {output = "<error>"; break;}
@@ -21,53 +20,55 @@ void Printer::printType(Type& node, options o) {
     o.os << output;
 }
 
-void Printer::printType(TypeRef& node, options o) {
+void srlz::type(const TypeRef& node, options o) {
     std::stringstream output;
-    output << node.id << " (aka ";
+    output << node.id << (o.ir ? "__" : " (aka ");
     auto lock = node.ref.lock();
     if (lock)
-        lock->type->printType({.os = output});
+        lock->type->serializeType({.os = output});
     else
         output << "??";
-    output << ')';
+    if (!o.ir)
+        output << ')';
     o.os << output.str();
 }
 
-void Printer::printType(RoutineType& node, options o) {
+void srlz::type(const RoutineType& node, options o) {
     std::stringstream output;
-    output << "routine(";
+    output << (o.ir ? "routine_" : "routine(");
     for (size_t i = 0; i < node.params.size(); ++i) {
-        node.params[i]->type->printType({.os = output});
-        if (i + 1 < node.params.size()) output << ", ";
+        node.params[i]->type->serializeType({.os = output});
+        if (i + 1 < node.params.size()) output << (o.ir ? "_" : ", ");
     }
 
-    output << "): ";
+    output << (o.ir ? "__" : "): ");
     if (node.retType)
-        node.retType->printType({.os = output});
+        node.retType->serializeType({.os = output});
     else
         output << "null";
 
     o.os << output.str();
 }
 
-void Printer::printType(ArrayType& node, options o) {
+void srlz::type(const ArrayType& node, options o) {
     std::stringstream output;
-    output << "array[";
+    output << (o.ir ? "array_" : "array[");
     if (node.size) {
         output << (node.size->knownPrimitive ? std::to_string(static_cast<IntLiteral&>(*node.size).val) : "??");
     }
-    output << "]: ";
-    node.elemType->printType({.os = output});
+    output << (o.ir ? "_" : "]: ");
+    node.elemType->serializeType({.os = output});
     o.os << output.str();
 }
 
-void Printer::printType(RecordType& node, options o) {
+void srlz::type(const RecordType& node, options o) {
     std::stringstream output;
-    output << "record{";
+    output << (o.ir ? "record_" : "record{");
     for (size_t i = 0; i < node.members.size(); ++i) {
-        node.members[i]->type->printType({.os = output});
+        node.members[i]->type->serializeType({.os = output});
         if (i + 1 < node.members.size()) output << ", ";
     }
-    output << "}";
+    if (o.ir)
+        output << "}";
     o.os << output.str();
 }

@@ -1,3 +1,4 @@
+var x is 15
 routine main() is
     print true
     print false

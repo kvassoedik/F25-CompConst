@@ -73,6 +73,6 @@ bool analyzer::isErrorType(const std::shared_ptr<Type> type) { return type->code
 
 std::string analyzer::stringifyType(const std::shared_ptr<Type>& t) {
     std::stringstream out;
-    t->printType({.os = out});
+    t->serializeType({.os = out});
     return out.str();
 }

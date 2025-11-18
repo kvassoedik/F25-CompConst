@@ -8,7 +8,7 @@
             "request": "launch",
             "cwd": "${workspaceRoot}",
             "preLaunchTask": "build",
-            "args": ["tests/2_routine/19_record_ref"]
+            "args": ["tests/0_basic/0_print"]
         }
     ]
 }

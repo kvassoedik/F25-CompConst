@@ -2,7 +2,7 @@
 
 #include "parser/Entity.h"
 #include "parser/Ast.h"
-#include "parser/Printer.h"
+#include "parser/srlz.h"
 #include <vector>
 #include <list>
 #include <memory>
@@ -47,7 +47,8 @@ struct Type : public Entity {
         : Entity(span), code(code) {}
 
     AST_DEBUGTREE_PRINT_METHOD
-    AST_PRINTTYPE_METHOD
+    AST_SRLZTYPE_METHOD
+    virtual CODEGEN_TYPE_METHOD
 public:
     TypeEnum code;
 };
@@ -57,7 +58,7 @@ struct TypeRef final : public Type {
         : Type(ast, span, TypeEnum::REFERENCE), id(std::move(id)) {}
 
     AST_DEBUGTREE_PRINT_METHOD
-    AST_PRINTTYPE_METHOD
+    AST_SRLZTYPE_METHOD
     AST_VALIDATE_METHOD
 public:
     std::string id;
@@ -124,6 +125,7 @@ struct Expr : public Entity {
         }
 
     AST_DEBUGTREE_PRINT_METHOD
+    CODEGEN_METHOD
 public:
     std::shared_ptr<Type> type;
     ExprEnum code;
@@ -174,6 +176,7 @@ struct IdRef final: public Primary {
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
+    CODEGEN_METHOD
 public:
     std::string id;
     std::weak_ptr<Decl> ref;
@@ -228,6 +231,7 @@ struct BinaryExpr final: public Expr {
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
+    CODEGEN_METHOD
 public:
     std::shared_ptr<Expr> left{nullptr};
     std::shared_ptr<Expr> right{nullptr};
@@ -238,6 +242,7 @@ struct UnaryExpr final: public Expr {
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
+    CODEGEN_METHOD
 public:
     std::shared_ptr<Expr> val{nullptr};
 };
@@ -250,6 +255,7 @@ struct PrintStmt final : public Entity {
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
+    CODEGEN_METHOD
 public:
     std::vector<std::shared_ptr<Expr>> args;
 };
@@ -260,6 +266,7 @@ struct IfStmt final : public Entity {
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
+    CODEGEN_METHOD
 public:
     std::shared_ptr<Expr> condition{nullptr};
     std::shared_ptr<Block> body{nullptr};
@@ -272,6 +279,7 @@ struct WhileStmt final : public Entity {
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
+    CODEGEN_METHOD
 public:
     std::shared_ptr<Expr> condition{nullptr};
     std::shared_ptr<Block> body{nullptr};
@@ -283,6 +291,7 @@ struct ForStmt final : public Entity {
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
+    CODEGEN_METHOD
 public:
     std::shared_ptr<Var> counter;
     std::shared_ptr<RangeSpecifier> range{nullptr};
@@ -296,6 +305,7 @@ struct ReturnStmt final : public Entity {
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
+    CODEGEN_METHOD
 public:
     std::shared_ptr<Expr> val{nullptr};
 };
@@ -306,6 +316,7 @@ struct Assignment final : public Entity {
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
+    CODEGEN_METHOD
 public:
     std::shared_ptr<Primary> left{nullptr};
     std::shared_ptr<Expr> val{nullptr};
@@ -336,6 +347,7 @@ struct Routine final : public Decl {
     const std::shared_ptr<RoutineType>& getType() const noexcept { return (std::shared_ptr<RoutineType>&)(type); }
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
+    CODEGEN_METHOD
 public:
     std::shared_ptr<Block> body{nullptr};
 };
@@ -348,6 +360,7 @@ struct RoutineCall final : public Primary {
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
+    CODEGEN_METHOD
 public:
     std::vector<std::shared_ptr<Expr>> args;
     std::string routineId;
@@ -359,7 +372,8 @@ struct RoutineType final : public Type {
         : Type(ast, span, TypeEnum::Routine) {}
 
     AST_DEBUGTREE_PRINT_METHOD
-    AST_PRINTTYPE_METHOD
+    AST_SRLZTYPE_METHOD
+    CODEGEN_TYPE_METHOD
 public:
     std::vector<std::shared_ptr<Var>> params;
     std::shared_ptr<Type> retType{nullptr};
@@ -374,8 +388,9 @@ struct ArrayType final: public Type {
         }
 
     AST_DEBUGTREE_PRINT_METHOD
-    AST_PRINTTYPE_METHOD
+    AST_SRLZTYPE_METHOD
     AST_VALIDATE_METHOD
+    CODEGEN_TYPE_METHOD
 public:
     std::shared_ptr<Expr> size{nullptr};
     std::shared_ptr<Type> elemType;
@@ -389,6 +404,7 @@ struct ArrayAccess final : public Primary {
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
+    CODEGEN_METHOD
 public:
     std::shared_ptr<Expr> val{nullptr};
 };
@@ -400,8 +416,9 @@ struct RecordType final : public Type {
         : Type(ast, span, TypeEnum::Record) {}
 
     AST_DEBUGTREE_PRINT_METHOD
-    AST_PRINTTYPE_METHOD
+    AST_SRLZTYPE_METHOD
     AST_VALIDATE_METHOD
+    CODEGEN_TYPE_METHOD
 public:
     std::vector<std::shared_ptr<Var>> members;
 };

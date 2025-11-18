@@ -27,9 +27,20 @@ int Optimizer::configure(int* argc, char** argv) {
                     std::cerr << "Unrecognized -OV option: " << s << "\n";
                     return 1;
                 }
-            } else if ("off" == option) {
-                config_.disabled = true;
-            } else {
+            }
+            // Toggles
+            else if (!option.empty() && 't' == option[0]) {
+                std::string_view s = option.size() > 1 ? option.substr(1) : "";
+                if ("comput" == s)
+                    config_.toggles.computations = false;
+                else if ("unused" == s)
+                    config_.toggles.unusedDecls = false;
+                else {
+                    std::cerr << "Unrecognized -Ot option: " << s << "\n";
+                    return 1;
+                }
+            }
+            else {
                 std::cerr << "Unrecognized -O option: " << option << "\n";
                 return 1;
             }
@@ -51,7 +62,7 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
 (_node_->code == ExprEnum::IntLiteral ? static_cast<IntLiteral&>(*_node_).val : static_cast<RealLiteral&>(*_node_).val)
 // -----------------------------------------------------
 
-    if (isErrorType(expr.type) || config_.disabled)
+    if (isErrorType(expr.type) || !config_.toggles.computations)
         return nullptr;
 
     struct NumericBinaryOperation {
@@ -440,7 +451,7 @@ void Optimizer::removeUnitFromCurrBlockLater(const Entity& node) {
 }
 
 void Optimizer::removeUnusedDecls(Block& currBlock) {
-    if (config_.disabled)
+    if (!config_.toggles.unusedDecls)
         return;
 
     std::vector<const std::string*> rm;
