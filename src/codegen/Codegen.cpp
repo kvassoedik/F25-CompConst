@@ -160,10 +160,9 @@ llvm::Value* Codegen::gen(const ast::PrintStmt& node) {
 
         // Converting bool to string on output
         if (arg->type->code == TypeEnum::Bool) {
-            std::cout << "Converting\n";
             llArg = builder_->CreateSelect(llArg, globals_.strTrue, globals_.strFalse, "boolStr");
         }
-        std::cout << "push\n";
+
         llArgs.push_back(llArg);
     }
 
@@ -269,7 +268,20 @@ llvm::Value* Codegen::gen(const ast::UnaryExpr& node) {
 }
 
 llvm::Value* Codegen::gen(const ast::IdRef& node) {
-    return nullptr;
+    auto varDecl = node.ref.lock();
+    if (!varDecl)
+        llvm_unreachable("Codegen IdRef does not refer to any declaration");
+    
+    auto it = vars_.find(varDecl.get());
+    if (it == vars_.end())
+        llvm_unreachable("Codegen IdRef ref is not yet added to vars map");
+
+    if (node.next) {
+        // TODO
+    }
+
+    llvm::Value* llLoad = builder_->CreateLoad(it->second->getType(), it->second);
+    return llLoad;
 }
 
 llvm::Value* Codegen::gen(const ast::ArrayAccess& node) {

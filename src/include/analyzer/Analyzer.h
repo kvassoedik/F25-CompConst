@@ -64,6 +64,7 @@ private:
     Optimizer& optimizer_;
     bool deadCode_{false};
     bool analyzingRoutineParams_{false};
+    bool globalScope_{true};
 };
 
 }

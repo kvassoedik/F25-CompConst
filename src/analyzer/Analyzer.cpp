@@ -631,6 +631,9 @@ void Analyzer::validate(Var& node) {
         if (!node.type)
             node.type = node.val->type;
         node.knownPrimitive = node.val->knownPrimitive;
+
+        if (!node.knownPrimitive)
+            saveError("variables in global scope must be constants or optimized (were compile-time computations disabled?)", node.span);
     } else if (!analyzingRoutineParams_) {
         // default initializer
 
@@ -650,10 +653,7 @@ void Analyzer::validate(Var& node) {
 // Check that routine was declared in global scope
 void Analyzer::validate(Routine& node) {
     if (currBlock_ != root_.get()) {
-        saveError(
-            "routine declarations are only allowed in global scope",
-            node.span
-        );
+        saveError("routine declarations are only allowed in global scope", node.span);
         return;
     }
 

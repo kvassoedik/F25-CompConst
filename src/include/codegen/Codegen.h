@@ -51,7 +51,7 @@ private:
     void heapObjUseCountInc();
     void heapObjUseCountDecr();
 private:
-    std::unordered_map<const ast::Var*, llvm::Value*> vars_;
+    std::unordered_map<const ast::Decl*, llvm::Value*> vars_;
     std::unordered_map<std::string, llvm::Type*> typeHashMap_;
     struct {
         llvm::Constant *strTrue, *strFalse;
