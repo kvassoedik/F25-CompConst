@@ -96,6 +96,7 @@ enum class ExprEnum {
     RealLiteral,
 
     IdRef,
+    RecordMember,
     ArrayAccess,
 
     Negate,
@@ -421,6 +422,19 @@ struct RecordType final : public Type {
     CODEGEN_TYPE_METHOD
 public:
     std::vector<std::shared_ptr<Var>> members;
+};
+
+struct RecordMember final: public Primary {
+    RecordMember(const Ast& ast, Tokens::Span span, std::string id)
+        : Primary(ast, span), id(std::move(id)) {
+            code = ExprEnum::RecordMember;
+        }
+
+    AST_DEBUGTREE_PRINT_METHOD
+    AST_VALIDATE_METHOD
+    CODEGEN_METHOD
+public:
+    std::string id;
 };
 
 }

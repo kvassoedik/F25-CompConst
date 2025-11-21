@@ -374,5 +374,13 @@ void DebugTree::print(RecordType& node) {
     os_ << "record {" << sMembers << "}"
         << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
 }
+void DebugTree::print(RecordMember& node) {
+    os_ << "RecordMember " << node.id
+        << (node.next ? " -> " + AST_DEBUG_PTR_TO_STR(node.next) : "")
+        << AST_DEBUG_PRINT_METHOD_IMPL_TAIL(node.span);
+
+    if (node.next)
+        nextPrimary_.push_front(node.next.get());
+}
 
 #endif

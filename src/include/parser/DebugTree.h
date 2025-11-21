@@ -45,6 +45,7 @@ public:
     void print(TypeDecl& node);
     void print(ArrayType& node);
     void print(RecordType& node);
+    void print(RecordMember& node);
     void print(IntRange& node);
     void print(ArrayIdRange& node);
     void print(ArrayAccess& node);

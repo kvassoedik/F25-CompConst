@@ -12,6 +12,7 @@ struct TypeRef;
 struct TypeDecl;
 struct ArrayType;
 struct RecordType;
+struct RecordMember;
 struct IntRange;
 struct ArrayIdRange;
 struct ArrayAccess;

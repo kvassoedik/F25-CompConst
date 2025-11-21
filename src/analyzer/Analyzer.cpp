@@ -182,76 +182,79 @@ void Analyzer::validate(ArrayIdRange& node) {
 }
 
 void Analyzer::validate(IdRef& node) {
-    if (!idRef_.head) {
-        auto decl = searchDeclaration(node.id);
-        if (!decl) {
-            saveError(
-                "use of undeclared identifier: " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + node.id + ANSI_RESET,
-                node.span
-            );
-            return;
-        }
+    auto decl = searchDeclaration(node.id);
+    if (!decl) {
+        saveError(
+            "use of undeclared identifier: " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + node.id + ANSI_RESET,
+            node.span
+        );
+        return;
+    }
 
-        decl->useCount++;
-        node.ref = decl;
-        idRef_.head = &node;
-        idRef_.currType = &decl->type;
+    decl->useCount++;
+    node.ref = decl;
+    idRef_.head = &node;
+    idRef_.currType = &decl->type;
 
-        if (node.next) {
-            idRef_.prev = &node;
-            node.next->validate(*this);
-        }
-        node.type = *idRef_.currType;
-        idRef_.head = nullptr;
-    } else {
-        if ((*idRef_.currType)->code != TypeEnum::Record) {
-            if ((*idRef_.currType)->code == TypeEnum::Array
-                && node.id == "size")
-            {
-                idRef_.currType = &ast_->getBaseTypes().integer;
-                if (node.next) {
-                    idRef_.prev = &node;
-                    node.next->validate(*this);
-                }
+    if (node.next) {
+        idRef_.prev = &node;
+        node.next->validate(*this);
+    }
+    node.type = *idRef_.currType;
+    idRef_.head = nullptr;
+}
 
-                return;
+void Analyzer::validate(RecordMember& node) {
+    if (!idRef_.head)
+        throw std::runtime_error("internal error: rogue RecordMember without IdRef head");
+
+    if ((*idRef_.currType)->code != TypeEnum::Record) {
+        if ((*idRef_.currType)->code == TypeEnum::Array
+            && node.id == "size")
+        {
+            idRef_.currType = &ast_->getBaseTypes().integer;
+            if (node.next) {
+                idRef_.prev = &node;
+                node.next->validate(*this);
             }
 
-            saveError(
-                "object " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
-                + file_->extractSrc(idRef_.head->span.start, idRef_.prev->span.end) + ANSI_RESET
-                + " is not of record type; actual type: "
-                + ANSI_START ANSI_BOLD ANSI_APPLY + stringifyType(*idRef_.currType) + ANSI_RESET,
-                node.span
-            );
-            idRef_.currType = &ast_->getBaseTypes().error;
             return;
         }
 
-        auto it = std::find_if(
-            static_cast<RecordType&>(**idRef_.currType).members.begin(),
-            static_cast<RecordType&>(**idRef_.currType).members.end(),
-            [&node](std::shared_ptr<Var> var) { return var->id == node.id; }
+        saveError(
+            "object " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
+            + file_->extractSrc(idRef_.head->span.start, idRef_.prev->span.end) + ANSI_RESET
+            + " is not of record type; actual type: "
+            + ANSI_START ANSI_BOLD ANSI_APPLY + stringifyType(*idRef_.currType) + ANSI_RESET,
+            node.span
         );
-        if (it == static_cast<RecordType&>(**idRef_.currType).members.end()) {
-            saveError(
-                "object " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
-                + file_->extractSrc(idRef_.head->span.start, idRef_.prev->span.end) + ANSI_RESET
-                + " of type " + ANSI_START ANSI_BOLD ANSI_APPLY
-                + stringifyType(*idRef_.currType) + ANSI_RESET + " does not have a field '"
-                + ANSI_START ANSI_BOLD ANSI_APPLY + node.id + ANSI_RESET + "'",
-                node.span
-            );
-            idRef_.currType = &ast_->getBaseTypes().error;
-            return;
-        }
+        idRef_.currType = &ast_->getBaseTypes().error;
+        return;
+    }
 
-        idRef_.currType = &(*it)->type;
+    auto it = std::find_if(
+        static_cast<RecordType&>(**idRef_.currType).members.begin(),
+        static_cast<RecordType&>(**idRef_.currType).members.end(),
+        [&node](std::shared_ptr<Var> var) { return var->id == node.id; }
+    );
+    if (it == static_cast<RecordType&>(**idRef_.currType).members.end()) {
+        saveError(
+            "object " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
+            + file_->extractSrc(idRef_.head->span.start, idRef_.prev->span.end) + ANSI_RESET
+            + " of type " + ANSI_START ANSI_BOLD ANSI_APPLY
+            + stringifyType(*idRef_.currType) + ANSI_RESET + " does not have a field '"
+            + ANSI_START ANSI_BOLD ANSI_APPLY + node.id + ANSI_RESET + "'",
+            node.span
+        );
+        idRef_.currType = &ast_->getBaseTypes().error;
+        return;
+    }
 
-        if (node.next) {
-            idRef_.prev = &node;
-            node.next->validate(*this);
-        }
+    idRef_.currType = &(*it)->type;
+
+    if (node.next) {
+        idRef_.prev = &node;
+        node.next->validate(*this);
     }
 }
 
@@ -529,21 +532,24 @@ void Analyzer::validate(Assignment& node) {
         saveError("cannot assign to routine identifier", node.left->span);
         return;
     }
+    if (node.left->code != ExprEnum::IdRef)
+        throw std::runtime_error("internal error: lhs of assignment is not IdRef");
 
-    auto decl = static_cast<IdRef&>(*node.left).ref.lock();
+    IdRef& lhs = static_cast<IdRef&>(*node.left);
+    auto decl = lhs.ref.lock();
     bool firstTimeUsed = decl &&
         --decl->useCount == 0;
 
     node.val->validate(*this);
     if (node.val->type->code == TypeEnum::ERROR) {
-        invalidateKnownVarByRef(static_cast<IdRef&>(*node.left));
+        invalidateKnownVarByRef(lhs);
         return;
     }
 
     bool typesEqual = areTypesEqual(node.val->type, node.left->type);
     if (!typesEqual) {
         if (node.left->type->code == TypeEnum::Array || node.left->type->code == TypeEnum::Record) {
-            invalidateKnownVarByRef(static_cast<IdRef&>(*node.left));
+            invalidateKnownVarByRef(lhs);
             saveError("assignment type mismatch\n\texpected: "
                 + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + stringifyType(node.left->type)
                 + ANSI_RESET + "\n\tbut got: "
@@ -555,7 +561,7 @@ void Analyzer::validate(Assignment& node) {
 
         if (node.left->type->code == TypeEnum::Bool) {
             if (node.val->type->code == TypeEnum::Real) {
-                invalidateKnownVarByRef(static_cast<IdRef&>(*node.left));
+                invalidateKnownVarByRef(lhs);
                 saveError("illegal assignment of real to boolean", node.val->span);
                 return;
             }
@@ -572,7 +578,7 @@ void Analyzer::validate(Assignment& node) {
             || (std::static_pointer_cast<IntLiteral>(node.val)->val != 0
             && std::static_pointer_cast<IntLiteral>(node.val)->val != 1)) {
             
-            invalidateKnownVarByRef(static_cast<IdRef&>(*node.left));
+            invalidateKnownVarByRef(lhs);
             saveError(
                 "assignment of integer to boolean is only allowed if the right side is evaluated at compile-time and is either 0 or 1",
                 node.val->span
@@ -583,9 +589,9 @@ void Analyzer::validate(Assignment& node) {
 
     Optimizer::AssignmentOptStatus res = optimizer_.optimizeAssignmentAway(node, decl, firstTimeUsed);
     if (res == Optimizer::AssignmentOptStatus::Skip)
-        invalidateKnownVarByRef(static_cast<IdRef&>(*node.left));
+        invalidateKnownVarByRef(lhs);
     else if (res == Optimizer::AssignmentOptStatus::Fail) {
-        invalidateKnownVarByRef(static_cast<IdRef&>(*node.left));
+        invalidateKnownVarByRef(lhs);
         if (!currRoutine_) {
             saveError("non-compile-time evaluated assignment in global scope is illegal", node.span);
         }

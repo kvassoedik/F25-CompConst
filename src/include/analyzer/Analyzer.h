@@ -27,6 +27,7 @@ public:
     void validate(ast::IntRange& node);
     void validate(ast::ArrayIdRange& node);
     void validate(ast::IdRef& node);
+    void validate(ast::RecordMember& node);
     void validate(ast::BinaryExpr& node);
     void validate(ast::UnaryExpr& node);
     void validate(ast::PrintStmt& node);
