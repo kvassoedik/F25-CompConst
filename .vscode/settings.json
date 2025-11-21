@@ -86,7 +86,10 @@
         "__hash_table": "cpp",
         "__availability": "cpp",
         "__config": "cpp",
-        "*.def": "cpp"
+        "*.def": "cpp",
+        "future": "cpp",
+        "shared_mutex": "cpp",
+        "cfenv": "cpp"
     },
     "cmake.sourceDirectory": "/home/user/Documents/work/CompConst/src"
 }

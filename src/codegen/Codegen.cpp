@@ -1,6 +1,7 @@
 #include "codegen/Codegen.h"
 #include "parser/structs.h"
 #include "analyzer/utils.h"
+#include "llvm/IR/Verifier.h"
 #include <string>
 #include <sstream>
 
@@ -14,8 +15,8 @@ Codegen::Codegen(std::shared_ptr<ast::Ast> ast)
     , builder_(std::make_unique<llvm::IRBuilder<>>(*context_))
     , module_(std::make_unique<llvm::Module>("Module", *context_))
 {
-    heapObjTypes_.heapObjPtr = StructType::create(*context_, "hoptr");
-    heapObjTypes_.heapObjPtr->setBody({llvm::PointerType::getInt64Ty(*context_)});
+    // heapObjTypes_.heapObjPtr = StructType::create(*context_, "hoptr");
+    // heapObjTypes_.heapObjPtr->setBody({llvm::PointerType::getInt64Ty(*context_)});
 
     // heapObjTypes_.array = StructType::create(*context_, "heapArray");
     // heapObjTypes_.array->setBody({llvm::PointerType::getInt64Ty(*context_)});
@@ -29,6 +30,7 @@ int Codegen::configure(int* argc, char** argv) {
 }
 
 void Codegen::run() {
+    initMetaGlobals();
     genGlobalVars();
     genRoutines();
     dump();
@@ -123,6 +125,50 @@ llvm::Value* Codegen::gen(const ast::Assignment& node) {
 }
 
 llvm::Value* Codegen::gen(const ast::PrintStmt& node) {
+    std::string fmtStr;
+    fmtStr.resize(std::max(node.args.size()*3, 1UL));
+
+    size_t i = 0;
+    for (auto& arg: node.args) {
+        fmtStr[i++] = '%';
+
+        char c;
+        switch (arg->type->code) {
+        case TypeEnum::Bool: { c = 's'; break; }
+        case TypeEnum::Int: { c = 'd'; break; }
+        case TypeEnum::Real: { c = 'f'; break; }
+        default:
+            llvm_unreachable("gen PrintStmt expr type non-exhaustive switch");
+        }
+
+        fmtStr[i++] = c;
+        if (i+1 < fmtStr.size())
+            fmtStr[i++] = ' ';
+    }
+    fmtStr[i] = '\n';
+
+    llvm::Constant* llFmtStr = builder_->CreateGlobalStringPtr(fmtStr, ".fmt", 0, nullptr, false);
+
+    std::vector<llvm::Value*> llArgs;
+    llArgs.reserve(node.args.size()+1);
+    llArgs.push_back(llFmtStr);
+
+    for (auto& arg: node.args) {
+        llvm::Value* llArg = arg->codegen(*this);
+        if (llArg == nullptr)
+            throw std::runtime_error("print arg has returned nullptr from codegen");
+
+        // Converting bool to string on output
+        if (arg->type->code == TypeEnum::Bool) {
+            std::cout << "Converting\n";
+            llArg = builder_->CreateSelect(llArg, globals_.strTrue, globals_.strFalse, "boolStr");
+        }
+        std::cout << "push\n";
+        llArgs.push_back(llArg);
+    }
+
+    llvm::Function *llPrintf = module_->getFunction("printf");
+    builder_->CreateCall(llPrintf, llArgs);
     return nullptr;
 }
 
@@ -249,6 +295,35 @@ llvm::Type* Codegen::getType(const ast::Type& node) {
 
 // ------------------------------ Private methods ------------------------------
 // -----------------------------------------------------------------------------
+
+// LLVM builder CreateGlobalStrPtr doesn't work outside of insertion block, hence done manually
+llvm::Constant* Codegen::newGlobalStrGlobalScope(const char* str, const char* label) {
+    auto *llData = llvm::ConstantDataArray::getString(*context_, str, true);
+    auto *llGlobal = new llvm::GlobalVariable(
+        *module_, llData->getType(), true,
+        llvm::GlobalValue::PrivateLinkage, llData, label
+    );
+    llGlobal->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+
+    auto *llZero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0);
+    llvm::Constant *indices[] = {llZero, llZero};
+
+    return llvm::ConstantExpr::getGetElementPtr(llData->getType(), llGlobal, indices);
+}
+
+void Codegen::initMetaGlobals() {
+    module_->getOrInsertFunction(
+        "printf",
+        llvm::FunctionType::get(
+            llvm::IntegerType::getInt32Ty(*context_),
+            llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(*context_)),
+            true /* vararg */
+        )
+    );
+
+    globals_.strTrue = newGlobalStrGlobalScope("true", ".str_true");
+    globals_.strFalse = newGlobalStrGlobalScope("false", ".str_false");
+}
 
 void Codegen::genGlobalVars() {
     globalScope_ = true;

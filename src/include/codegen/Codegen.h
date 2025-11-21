@@ -37,6 +37,8 @@ public:
     llvm::Type* genType(const ast::ArrayType& node) override;
     llvm::Type* genType(const ast::RecordType& node) override;
 private:
+    llvm::Constant* newGlobalStrGlobalScope(const char* str, const char* label);
+    void initMetaGlobals();
     void genGlobalVars();
     void genRoutines();
     void dump();
@@ -52,9 +54,10 @@ private:
     std::unordered_map<const ast::Var*, llvm::Value*> vars_;
     std::unordered_map<std::string, llvm::Type*> typeHashMap_;
     struct {
-        llvm::StructType *heapObjPtr;
+        llvm::Constant *strTrue, *strFalse;
+        // llvm::StructType *heapObjPtr;
         // llvm::StructType *array, *record;
-    } heapObjTypes_;
+    } globals_;
 
     std::shared_ptr<ast::Ast> ast_;
     std::unique_ptr<llvm::LLVMContext> context_;

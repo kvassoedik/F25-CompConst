@@ -17,15 +17,15 @@ add_executable(${PROJECT_NAME} main.cpp)
 set(LIB_NAME ${PROJECT_NAME}_lib)
 add_library(${LIB_NAME}
     ${CMAKE_SOURCE_DIR}/lexer/Lexer.cpp
-    # ${CMAKE_SOURCE_DIR}/lexer/Token.cpp
-    # ${CMAKE_SOURCE_DIR}/parser/Ast.cpp
-    # ${CMAKE_SOURCE_DIR}/parser/Parser.cpp
-    # ${CMAKE_SOURCE_DIR}/parser/srlz.cpp
-    # ${CMAKE_SOURCE_DIR}/parser/DebugTree.cpp
-    # ${CMAKE_SOURCE_DIR}/analyzer/Analyzer.cpp
-    # ${CMAKE_SOURCE_DIR}/analyzer/Optimizer.cpp
-    # ${CMAKE_SOURCE_DIR}/analyzer/utils.cpp
-    # ${CMAKE_SOURCE_DIR}/codegen/Codegen.cpp
+    ${CMAKE_SOURCE_DIR}/lexer/Token.cpp
+    ${CMAKE_SOURCE_DIR}/parser/Ast.cpp
+    ${CMAKE_SOURCE_DIR}/parser/Parser.cpp
+    ${CMAKE_SOURCE_DIR}/parser/srlz.cpp
+    ${CMAKE_SOURCE_DIR}/parser/DebugTree.cpp
+    ${CMAKE_SOURCE_DIR}/analyzer/Analyzer.cpp
+    ${CMAKE_SOURCE_DIR}/analyzer/Optimizer.cpp
+    ${CMAKE_SOURCE_DIR}/analyzer/utils.cpp
+    ${CMAKE_SOURCE_DIR}/codegen/Codegen.cpp
 )
 
 # target_link_libraries(${LIB_NAME}
