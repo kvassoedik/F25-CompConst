@@ -138,7 +138,7 @@ llvm::Value* Codegen::gen(const ast::PrintStmt& node) {
         case TypeEnum::Int: { c = 'd'; break; }
         case TypeEnum::Real: { c = 'f'; break; }
         default:
-            llvm_unreachable("gen PrintStmt expr type non-exhaustive switch");
+            llvm_unreachable("gen PrintStmt: unexpected arg type");
         }
 
         fmtStr[i++] = c;
@@ -213,17 +213,59 @@ llvm::Value* Codegen::gen(const ast::Expr& node) {
         llvm::Type::getFloatTy(*context_),
         static_cast<const RealLiteral&>(node).val
     );
-    default:
-        llvm_unreachable("Codegen Expr got unsupported code");
     }
+    llvm_unreachable("Codegen Expr: unexpected code " + std::to_string(node.code));
 }
 
 llvm::Value* Codegen::gen(const ast::BinaryExpr& node) {
-    return nullptr;
+    llvm::Value* llLeft = node.left->codegen(*this);
+    if (llLeft == nullptr)
+        throw std::runtime_error("Codegen BinaryExpr left got nullptr");
+    llvm::Value* llRight = node.left->codegen(*this);
+    if (llRight == nullptr)
+        throw std::runtime_error("Codegen BinaryExpr right got nullptr");
+
+    switch (node.code) {
+    case ExprEnum::Add: return builder_->CreateAdd(llLeft, llRight, "add");
+    case ExprEnum::Subtract: return builder_->CreateSub(llLeft, llRight, "sub");
+    case ExprEnum::Multiply: return builder_->CreateMul(llLeft, llRight, "mul");
+    case ExprEnum::Divide: {
+        if (node.type->code == TypeEnum::Int)
+            return builder_->CreateSDiv(llLeft, llRight, "sdiv");
+        else if (node.type->code == TypeEnum::Real)
+            return builder_->CreateFDiv(llLeft, llRight, "fdiv");
+        else
+            llvm_unreachable("Codegen BinaryExpr Divide: unexpected type " + std::to_string(node.type));
+    }
+    case ExprEnum::Modulo: {
+        if (node.type->code == TypeEnum::Int)
+            return builder_->CreateSRem(llLeft, llRight, "mul");
+        else
+            llvm_unreachable("Codegen BinaryExpr Modulo: unexpected type " + std::to_string(node.type));
+    }
+    case ExprEnum::And: return builder_->CreateAnd(llLeft, llRight, "and");
+    case ExprEnum::Or: return builder_->CreateOr(llLeft, llRight, "or");
+    case ExprEnum::Xor: return builder_->CreateXor(llLeft, llRight, "xor");
+    case ExprEnum::LESS_THAN: return builder_->CreateICmpSLT(llLeft, llRight, "lt");
+    case ExprEnum::LESS_OR_EQUAL: return builder_->CreateICmpSLE(llLeft, llRight, "le");
+    case ExprEnum::MORE_THAN: return builder_->CreateICmpSGT(llLeft, llRight, "gt");
+    case ExprEnum::MORE_OR_EQUAL: return builder_->CreateICmpSGE(llLeft, llRight, "ge");
+    case ExprEnum::EQUAL: return builder_->CreateICmpEQ(llLeft, llRight, "eq");
+    case ExprEnum::UNEQUAL: return builder_->CreateICmpNE(llLeft, llRight, "ne");
+    }
+    llvm_unreachable("Codegen BinaryExpr: unexpected code " + std::to_string(node.code));
 }
 
 llvm::Value* Codegen::gen(const ast::UnaryExpr& node) {
-    return nullptr;
+    llvm::Value* llVal = node.val->codegen(*this);
+    if (llVal == nullptr)
+        throw std::runtime_error("Codegen UnaryExpr: val got nullptr");
+
+    switch (node.code) {
+    case ExprEnum::Negate: return builder_->CreateNeg(llVal, "neg");
+    case ExprEnum::Not: return builder_->CreateNot(llVal, "not");
+    }
+    llvm_unreachable("Codegen UnaryExpr: unexpected code " + std::to_string(node.code));
 }
 
 llvm::Value* Codegen::gen(const ast::IdRef& node) {
@@ -298,7 +340,7 @@ llvm::Type* Codegen::getType(const ast::Type& node) {
 
 // LLVM builder CreateGlobalStrPtr doesn't work outside of insertion block, hence done manually
 llvm::Constant* Codegen::newGlobalStrGlobalScope(const char* str, const char* label) {
-    auto *llData = llvm::ConstantDataArray::getString(*context_, str, true);
+    auto *llData = llvm::ConstantDataArray::getString(*context_, str, false /* null terminator */);
     auto *llGlobal = new llvm::GlobalVariable(
         *module_, llData->getType(), true,
         llvm::GlobalValue::PrivateLinkage, llData, label
@@ -366,7 +408,7 @@ llvm::Constant* Codegen::getConstInitializer(const ast::Expr& node) {
         static_cast<const RealLiteral&>(node).val
     );
     default:
-        llvm_unreachable("getConstInitializer code switch non-exhaustive");
+        llvm_unreachable("Codegen getConstInitializer: ");
     }
 }
 
