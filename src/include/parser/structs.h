@@ -403,6 +403,7 @@ struct ArrayAccess final : public Primary {
             code = ExprEnum::ArrayAccess;
         }
 
+    const std::shared_ptr<ArrayType>& getType() const noexcept { return (std::shared_ptr<ArrayType>&)(type); }
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
     CODEGEN_METHOD

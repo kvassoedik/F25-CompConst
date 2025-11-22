@@ -15,6 +15,9 @@ Codegen::Codegen(std::shared_ptr<ast::Ast> ast)
     , builder_(std::make_unique<llvm::IRBuilder<>>(*context_))
     , module_(std::make_unique<llvm::Module>("Module", *context_))
 {
+    primaryOffsets_.reserve(16);
+
+    mainTys_.floatTy = llvm::Type::getFloatTy(*context_);
     // heapObjTypes_.heapObjPtr = StructType::create(*context_, "hoptr");
     // heapObjTypes_.heapObjPtr->setBody({llvm::PointerType::getInt64Ty(*context_)});
 
@@ -58,7 +61,7 @@ llvm::Value* Codegen::gen(const ast::Var& node) {
 
         if (analyzer::isPrimitiveType(node.type)) {
             llvm::Value* llInitializer = node.val->codegen(*this);
-            llvm::AllocaInst* llVar = tmpBuilder.CreateAlloca(llInitializer->getType(), nullptr, llvm::Twine(node.id));
+            llvm::AllocaInst* llVar = tmpBuilder.CreateAlloca(llInitializer->getType(), nullptr, node.id);
             builder_->CreateStore(llInitializer, llVar);
             vars_.emplace(&node, llVar);
             return llVar;
@@ -200,16 +203,16 @@ llvm::Value* Codegen::gen(const ast::ReturnStmt& node) {
 
 llvm::Value* Codegen::gen(const ast::Expr& node) {
     switch (node.code) {
-    case ExprEnum::BoolLiteral: return ConstantInt::getSigned(
+    case ExprEnum::BoolLiteral: return ConstantInt::get(
         llvm::Type::getInt1Ty(*context_),
         static_cast<const BoolLiteral&>(node).val
     );
-    case ExprEnum::IntLiteral: return ConstantInt::getSigned(
+    case ExprEnum::IntLiteral: return ConstantInt::get(
         llvm::Type::getInt32Ty(*context_),
         static_cast<const IntLiteral&>(node).val
     );
     case ExprEnum::RealLiteral: return ConstantFP::get(
-        llvm::Type::getFloatTy(*context_),
+        mainTys_.floatTy,
         static_cast<const RealLiteral&>(node).val
     );
     }
@@ -220,27 +223,58 @@ llvm::Value* Codegen::gen(const ast::BinaryExpr& node) {
     llvm::Value* llLeft = node.left->codegen(*this);
     if (llLeft == nullptr)
         throw std::runtime_error("Codegen BinaryExpr left got nullptr");
-    llvm::Value* llRight = node.left->codegen(*this);
+    llvm::Value* llRight = node.right->codegen(*this);
     if (llRight == nullptr)
         throw std::runtime_error("Codegen BinaryExpr right got nullptr");
 
     switch (node.code) {
-    case ExprEnum::Add: return builder_->CreateAdd(llLeft, llRight, "add");
-    case ExprEnum::Subtract: return builder_->CreateSub(llLeft, llRight, "sub");
-    case ExprEnum::Multiply: return builder_->CreateMul(llLeft, llRight, "mul");
+    case ExprEnum::Add: {
+        if (node.type->code == TypeEnum::Int) {
+            return builder_->CreateAdd(llLeft, llRight, "add");
+        } else if (node.type->code == TypeEnum::Real) {
+            convertToFloat(llLeft);
+            convertToFloat(llRight);
+            return builder_->CreateFAdd(llLeft, llRight, "fadd");
+        } else
+            llvm_unreachable("Codegen BinaryExpr: unexpected type " + std::to_string(node.type));
+    }
+    case ExprEnum::Subtract: {
+        if (node.type->code == TypeEnum::Int) {
+            return builder_->CreateSub(llLeft, llRight, "sub");
+        } else if (node.type->code == TypeEnum::Real) {
+            convertToFloat(llLeft);
+            convertToFloat(llRight);
+            return builder_->CreateFSub(llLeft, llRight, "fsub");
+        } else
+            llvm_unreachable("Codegen BinaryExpr: unexpected type " + std::to_string(node.type));
+    }
+    case ExprEnum::Multiply: {
+        if (node.type->code == TypeEnum::Int) {
+            llLeft->getType()->dump();
+            llRight->getType()->dump();
+            return builder_->CreateMul(llLeft, llRight, "mul");
+        } else if (node.type->code == TypeEnum::Real) {
+            convertToFloat(llLeft);
+            convertToFloat(llRight);
+            return builder_->CreateFMul(llLeft, llRight, "fmul");
+        } else
+            llvm_unreachable("Codegen BinaryExpr: unexpected type " + std::to_string(node.type));
+    }
     case ExprEnum::Divide: {
-        if (node.type->code == TypeEnum::Int)
-            return builder_->CreateSDiv(llLeft, llRight, "sdiv");
-        else if (node.type->code == TypeEnum::Real)
+        if (node.type->code == TypeEnum::Int) {
+            return builder_->CreateSDiv(llLeft, llRight, "div");
+        } else if (node.type->code == TypeEnum::Real) {
+            convertToFloat(llLeft);
+            convertToFloat(llRight);
             return builder_->CreateFDiv(llLeft, llRight, "fdiv");
-        else
-            llvm_unreachable("Codegen BinaryExpr Divide: unexpected type " + std::to_string(node.type));
+        } else
+            llvm_unreachable("Codegen BinaryExpr: unexpected type " + std::to_string(node.type));
     }
     case ExprEnum::Modulo: {
-        if (node.type->code == TypeEnum::Int)
+        if (node.type->code == TypeEnum::Int) {
             return builder_->CreateSRem(llLeft, llRight, "mul");
-        else
-            llvm_unreachable("Codegen BinaryExpr Modulo: unexpected type " + std::to_string(node.type));
+        } else
+            llvm_unreachable("Codegen BinaryExpr: unexpected type " + std::to_string(node.type));
     }
     case ExprEnum::And: return builder_->CreateAnd(llLeft, llRight, "and");
     case ExprEnum::Or: return builder_->CreateOr(llLeft, llRight, "or");
@@ -271,20 +305,79 @@ llvm::Value* Codegen::gen(const ast::IdRef& node) {
     auto varDecl = node.ref.lock();
     if (!varDecl)
         llvm_unreachable("Codegen IdRef does not refer to any declaration");
-    
+
     auto it = vars_.find(varDecl.get());
     if (it == vars_.end())
         llvm_unreachable("Codegen IdRef ref is not yet added to vars map");
 
+    llvm::Type* llTy = getType(*varDecl->type); // pointers are opaque, thus we need to get the type from AST again
+    llvm::Value* llLoad = builder_->CreateLoad(llTy, it->second);
+
     if (node.next) {
-        // TODO
+        primaryType_ = node.type.get();
+
+        // Struct GEP requires a 0 offset first
+        primaryOffsets_.push_back(
+            llvm::ConstantInt::get(*context_, llvm::APInt(32, 0))
+        );
+
+        // primaryOffsets_ will be filled by each .next node
+        node.next->codegen(*this);
+
+        llvm::Type* llTy = getType(*varDecl->type);
+        llvm::Value* llGep = builder_->CreateGEP(llTy, llLoad, primaryOffsets_);
+        primaryOffsets_.clear();
+        return llGep;
     }
 
-    llvm::Value* llLoad = builder_->CreateLoad(it->second->getType(), it->second);
     return llLoad;
 }
 
+llvm::Value* Codegen::gen(const ast::RecordMember& node) {
+    if (primaryOffsets_.empty())
+        llvm_unreachable("Codegen RecordMember: rogue");
+    if (primaryType_->code != TypeEnum::Record)
+        llvm_unreachable("Codegen RecordMember: parent type is not a record");
+
+    auto& members = static_cast<RecordType*>(primaryType_)->members;
+    size_t offset = 0;
+    for (auto& mem: members) {
+        if (mem->id == node.id) {
+            primaryType_ = mem->type.get();
+            break;
+        }
+        offset++;
+    }
+    if (offset == members.size())
+        llvm_unreachable("Codegen RecordMember: member not found by name");
+
+    primaryOffsets_.push_back(
+        llvm::ConstantInt::get(*context_, llvm::APInt(32, offset))
+    );
+
+    if (node.next)
+        node.next->codegen(*this);
+
+    return nullptr;
+}
+
 llvm::Value* Codegen::gen(const ast::ArrayAccess& node) {
+    if (primaryOffsets_.empty())
+        llvm_unreachable("Codegen ArrayAccess: rogue");
+    if (primaryType_->code != TypeEnum::Array)
+        llvm_unreachable("Codegen ArrayAccess: parent type is not an array");
+
+    llvm::Value* llOffset = node.val->codegen(*this);
+    if (llOffset == nullptr)
+        llvm_unreachable("Codegen ArrayAccess: val got null");
+    
+    primaryOffsets_.push_back(llOffset);
+
+    if (node.next) {
+        primaryType_ = node.getType()->elemType.get();
+        node.next->codegen(*this);
+    }
+
     return nullptr;
 }
 
@@ -299,7 +392,7 @@ llvm::Type* Codegen::genType(const ast::Type& node) {
     switch (node.code) {
     case TypeEnum::Bool: return llvm::Type::getInt1Ty(*context_);
     case TypeEnum::Int: return llvm::Type::getInt32Ty(*context_);
-    case TypeEnum::Real: return llvm::Type::getFloatTy(*context_);
+    case TypeEnum::Real: return mainTys_.floatTy;
     default:
         llvm_unreachable("genType on Type class called with invalid code");
     }
@@ -407,20 +500,20 @@ llvm::Constant* Codegen::getConstInitializer(const ast::Expr& node) {
         llvm_unreachable("getConstInitializer called on compile-time unknown expr");
 
     switch (node.code) {
-    case ExprEnum::BoolLiteral: return ConstantInt::getSigned(
+    case ExprEnum::BoolLiteral: return ConstantInt::get(
         llvm::Type::getInt1Ty(*context_),
         static_cast<const BoolLiteral&>(node).val
     );
-    case ExprEnum::IntLiteral: return ConstantInt::getSigned(
+    case ExprEnum::IntLiteral: return ConstantInt::get(
         llvm::Type::getInt32Ty(*context_),
         static_cast<const IntLiteral&>(node).val
     );
     case ExprEnum::RealLiteral: return ConstantFP::get(
-        llvm::Type::getFloatTy(*context_),
+        mainTys_.floatTy,
         static_cast<const RealLiteral&>(node).val
     );
     default:
-        llvm_unreachable("Codegen getConstInitializer: ");
+        llvm_unreachable("Codegen getConstInitializer: unexpected code");
     }
 }
 
@@ -435,6 +528,11 @@ llvm::FunctionType* Codegen::genRoutineType(const ast::RoutineType& node) {
         ?  node.retType->codegenType(*this)
         : llvm::Type::getVoidTy(*context_);
     return llvm::FunctionType::get(llRetTy, llParamTy, false /* isVarArgs */);
+}
+
+void Codegen::convertToFloat(llvm::Value*& llVal) {
+    if (llVal->getType()->isIntegerTy())
+        llVal = builder_->CreateSIToFP(llVal, mainTys_.floatTy, "itof");
 }
 
 llvm::Value* Codegen::newHeapObject(llvm::TypeSize bitSize) {

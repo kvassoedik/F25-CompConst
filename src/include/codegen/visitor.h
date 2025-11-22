@@ -25,6 +25,7 @@ public:
     virtual llvm::Value* gen(const ast::BinaryExpr& node) = 0;
     virtual llvm::Value* gen(const ast::UnaryExpr& node) = 0;
     virtual llvm::Value* gen(const ast::IdRef& node) = 0;
+    virtual llvm::Value* gen(const ast::RecordMember& node) = 0;
     virtual llvm::Value* gen(const ast::ArrayAccess& node) = 0;
     virtual llvm::Value* gen(const ast::RoutineCall& node) = 0;
 

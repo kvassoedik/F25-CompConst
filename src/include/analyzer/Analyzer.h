@@ -48,9 +48,12 @@ private:
     void invalidateKnownVarByRef(ast::IdRef& node);
     void saveError(std::string reason, Tokens::Span span);
     void validateType(std::shared_ptr<ast::Type>& t);
+    bool isInGlobalScope() const noexcept { return currBlock_ == ast_->getRoot().get(); }
 private:
     std::shared_ptr<FileReader> file_;
-    std::shared_ptr<ast::Block> root_{nullptr};
+    std::shared_ptr<ast::Ast> ast_;
+    Optimizer& optimizer_;
+
     ast::Block* currBlock_;
     struct {
         ast::Primary* head{nullptr};
@@ -61,11 +64,8 @@ private:
     std::unordered_map<std::string, std::shared_ptr<ast::Routine>> undefinedRoutines_;
     std::unordered_set<std::string> recordMemberNames_;
     Reporter reporter_{file_};
-    std::shared_ptr<ast::Ast> ast_;
-    Optimizer& optimizer_;
     bool deadCode_{false};
     bool analyzingRoutineParams_{false};
-    bool globalScope_{true};
 };
 
 }

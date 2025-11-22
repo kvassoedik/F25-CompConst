@@ -11,8 +11,7 @@ int Analyzer::configure(int* argc, char** argv) {
 }
 
 void Analyzer::run() {
-    root_ = ast_->getRoot();
-    currBlock_ = root_.get();
+    currBlock_ = ast_->getRoot().get();
     validate(*currBlock_);
 
     for (auto& routine: undefinedRoutines_) {
@@ -24,8 +23,8 @@ void Analyzer::run() {
     }
 
     /* Validating main routine*/ {
-        auto it = root_->declMap.find("main");
-        if (it == root_->declMap.end()) {
+        auto it = ast_->getRoot()->declMap.find("main");
+        if (it == ast_->getRoot()->declMap.end()) {
             saveError("no 'main' routine defined", Tokens::Span{1,0,1});
             return;
         }
@@ -44,7 +43,7 @@ void Analyzer::run() {
         it->second->useCount++;
     }
 
-    optimizer_.onBlockFinish(*root_);
+    optimizer_.onBlockFinish(*ast_->getRoot());
 }
 
 void Analyzer::saveError(std::string reason, Tokens::Span span) {
@@ -129,7 +128,7 @@ void Analyzer::validate(Block& node) {
         unit->validate(*this);
     }
 
-    if (currBlock_ && currBlock_ != root_.get())
+    if (currBlock_ && currBlock_ != ast_->getRoot().get())
         optimizer_.onBlockFinish(*currBlock_);
 
     currBlock_ = currBlock_->parent.lock().get();
@@ -213,6 +212,7 @@ void Analyzer::validate(RecordMember& node) {
             && node.id == "size")
         {
             idRef_.currType = &ast_->getBaseTypes().integer;
+            node.type = *idRef_.currType;
             if (node.next) {
                 idRef_.prev = &node;
                 node.next->validate(*this);
@@ -251,7 +251,7 @@ void Analyzer::validate(RecordMember& node) {
     }
 
     idRef_.currType = &(*it)->type;
-
+    node.type = *idRef_.currType;
     if (node.next) {
         idRef_.prev = &node;
         node.next->validate(*this);
@@ -638,7 +638,7 @@ void Analyzer::validate(Var& node) {
             node.type = node.val->type;
         node.knownPrimitive = node.val->knownPrimitive;
 
-        if (!node.knownPrimitive)
+        if (!node.knownPrimitive && isInGlobalScope())
             saveError("variables in global scope must be constants or optimized (were compile-time computations disabled?)", node.span);
     } else if (!analyzingRoutineParams_) {
         // default initializer
@@ -658,7 +658,7 @@ void Analyzer::validate(Var& node) {
 
 // Check that routine was declared in global scope
 void Analyzer::validate(Routine& node) {
-    if (currBlock_ != root_.get()) {
+    if (!isInGlobalScope()) {
         saveError("routine declarations are only allowed in global scope", node.span);
         return;
     }

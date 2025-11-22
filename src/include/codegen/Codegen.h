@@ -30,6 +30,7 @@ public:
     llvm::Value* gen(const ast::BinaryExpr& node) override;
     llvm::Value* gen(const ast::UnaryExpr& node) override;
     llvm::Value* gen(const ast::IdRef& node) override;
+    llvm::Value* gen(const ast::RecordMember& node) override;
     llvm::Value* gen(const ast::ArrayAccess& node) override;
     llvm::Value* gen(const ast::RoutineCall& node) override;
 
@@ -46,6 +47,7 @@ private:
     llvm::Type* getType(const ast::Type& node);
     llvm::Constant* getConstInitializer(const ast::Expr& node);
     llvm::FunctionType* genRoutineType(const ast::RoutineType& node);
+    void convertToFloat(llvm::Value*& llVal);
 
     llvm::Value* newHeapObject(llvm::TypeSize bitSize);
     void heapObjUseCountInc();
@@ -58,12 +60,17 @@ private:
         // llvm::StructType *heapObjPtr;
         // llvm::StructType *array, *record;
     } globals_;
+    struct {
+        llvm::Type *floatTy;
+    } mainTys_;
 
     std::shared_ptr<ast::Ast> ast_;
     std::unique_ptr<llvm::LLVMContext> context_;
     std::unique_ptr<llvm::IRBuilder<>> builder_;
     std::unique_ptr<llvm::Module> module_;
 
+    std::vector<llvm::Value*> primaryOffsets_;
+    ast::Type* primaryType_{nullptr};
     bool globalScope_{true};
     bool isMainRoutine_{false};
 };
