@@ -117,6 +117,12 @@ std::shared_ptr<Tokens::BaseTk> Lexer::nextToken() {
         // Check if currently inside a comment
         if (flags_.commentStarted) {
             if (flags_.commentMultiline) {
+                if (isEndline(c, true)) {
+                    move(1);
+                    lineNum_++;
+                    file_->lineStarts.push_back(pos_); // remember where the next line has started
+                    continue;   
+                }
                 if (c != '*') {
                     move(1);
                     continue;
@@ -199,8 +205,8 @@ std::shared_ptr<Tokens::BaseTk> Lexer::nextToken() {
         if (isEndline(c, true)) {
             move(1);
             auto tk = std::make_shared<Tokens::BaseTk>(TokenType::ENDLINE); initToken(tk);
-            lineNum_++;
 
+            lineNum_++;
             file_->lineStarts.push_back(pos_); // remember where the next line has started
             return tk;
         }
@@ -401,12 +407,13 @@ TokenType Lexer::getDelimiterType(char c) {
             char c2;
             if (lookAhead(c2))
                 if ('/' == c2) {
+                    if (canLog(2)) std::cout << "Skip character: " << c2 << "\n";
+                    move(1);
+
                     if (!flags_.waitingForMultilineCommentClose)
                         saveError("comment close does not have a beginning");
                     flags_.waitingForMultilineCommentClose = false;
-
-                    if (canLog(2)) std::cout << "Skip character: " << c2 << "\n";
-                    move(1);
+       
                     return TokenType::COMMENT_CLOSE;
                 }
             return TokenType::TIMES;
@@ -444,7 +451,7 @@ TokenType Lexer::getDelimiterType(char c) {
 
 bool Lexer::isEndline(char c, bool doMove) {
     if (c == 10 || c == 13) { // Line Feed + Carriage Return
-        // If it's Windows notation (CRLF), skip over both characters
+        // If it's Windows notation (CRLF), skip over one character
         if (c == 13) {
             char c2;
             if (lookAhead(c2)) {
