@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include "lexer/LexerStatus.h"
 #include "report/Report.h"
 #include "FileReader.h"
 #include <vector>
@@ -22,8 +21,8 @@ public:
     static bool isLetter(char c) { return ((c > 64 && c < 91) || (c > 96 && c < 123) || c == 95);}
 
 private:
-    std::shared_ptr<Tokens::BaseTk> nextToken(LexerStatus& ret_st);
-    std::shared_ptr<Tokens::BaseTk> getTokenFromWord(LexerStatus& ret_st);
+    std::shared_ptr<Tokens::BaseTk> nextToken();
+    std::shared_ptr<Tokens::BaseTk> getTokenFromWord();
     void initToken(std::shared_ptr<Tokens::BaseTk>& tk);
     TokenType getDelimiterType(char c);
 
@@ -34,7 +33,7 @@ private:
     unsigned long currTkLen() const noexcept { return pos_ - currTkStart_; }
 
     bool canLog(int verbosityLevel) const noexcept { return verbosityLevel <= logVerbosity_; }
-    void saveError(LexerStatus st, std::string reason);
+    void saveError(std::string reason);
 private:
     std::shared_ptr<FileReader> file_;
     Reporter reporter_{file_};
@@ -46,8 +45,9 @@ private:
     //
 
     struct {
-        bool eof: 1 = false;
-        bool commentStarted: 1 = false;
-        bool commentMultiline: 1 = false;
-    } bits_;
+        bool eof = false;
+        bool commentStarted = false;
+        bool commentMultiline = false;
+        bool waitingForMultilineCommentClose = false;
+    } flags_;
 };

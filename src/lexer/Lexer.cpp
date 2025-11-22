@@ -64,12 +64,10 @@ std::vector<std::shared_ptr<Tokens::BaseTk>> Lexer::run() {
         throw std::runtime_error("No opened file");
 
     std::vector<std::shared_ptr<Tokens::BaseTk>> tokens;
-    LexerStatus st = LexerStatus::NONE; // LexerStatus does nothing. Could be for extensibility to Formatters, Intellisense
-
     do {
-        auto tk = nextToken(st);
+        auto tk = nextToken();
         if (canLog(1)) std::cout << "* New token: " << *tk << "\n";
-
+        
 #if LX_SAVE_EXCESSIVE_TOKENS
         tokens.emplace_back(std::move(tk));
 #else
@@ -80,17 +78,17 @@ std::vector<std::shared_ptr<Tokens::BaseTk>> Lexer::run() {
             tokens.emplace_back(std::move(tk));
         }
 #endif
-    } while (!bits_.eof);
+    } while (!flags_.eof);
 
     return tokens;
 }
 
-std::shared_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
+std::shared_ptr<Tokens::BaseTk> Lexer::nextToken() {
     char c;
     while (get(c)) {
         if (c < 0) {
             move(1);
-            saveError(LexerStatus::LX_NON_ASCII, "non-ASCII character encountered (ASCII "
+            saveError("non-ASCII character encountered (ASCII "
                 + std::to_string(static_cast<int>(static_cast<unsigned char>(c))) + ")");
             pos_--;
 
@@ -117,8 +115,8 @@ std::shared_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
         }
 
         // Check if currently inside a comment
-        if (bits_.commentStarted) {
-            if (bits_.commentMultiline) {
+        if (flags_.commentStarted) {
+            if (flags_.commentMultiline) {
                 if (c != '*') {
                     move(1);
                     continue;
@@ -131,6 +129,7 @@ std::shared_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
                     continue;
                 }
 
+                flags_.waitingForMultilineCommentClose = true;
                 if (canLog(2)) {
                     std::cout << "Skip character: " << c2 << "\n";
                     std::cout << "Closing a comment\n";
@@ -141,7 +140,7 @@ std::shared_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
                     continue;
                 }
             }
-            bits_.commentStarted = false;
+            flags_.commentStarted = false;
 
             auto tk = std::make_shared<Tokens::BaseTk>(TokenType::COMMENT_BODY); initToken(tk);
             return tk;
@@ -192,7 +191,7 @@ std::shared_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
         // Flush the accumulated word
         if (currTkLen() > 0) {
             // Process the previously stored word first, this delimiter will be parsed later
-            auto tk = getTokenFromWord(ret_st); initToken(tk);
+            auto tk = getTokenFromWord(); initToken(tk);
             return tk;
         }
 
@@ -210,7 +209,7 @@ std::shared_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
         move(1);
 
         if (type == TokenType::INVALID) {
-            saveError(LexerStatus::LX_UNSUPPORTED_SYMBOL, "Unsupported symbol: "
+            saveError("Unsupported symbol: "
                 + std::string{c}
                 + " (ASCII " + std::to_string(static_cast<int>(static_cast<unsigned char>(c))) + ")"
             );
@@ -222,12 +221,12 @@ std::shared_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
 
     if (canLog(1)) std::cout << "==> REACHED EOF <==\n";
     if (currTkLen() == 0) {
-        bits_.eof = true;
+        flags_.eof = true;
         auto tk = std::make_shared<Tokens::BaseTk>(TokenType::END_OF_FILE); initToken(tk);
         return tk;
     }
     
-    if (bits_.commentStarted) {
+    if (flags_.commentStarted) {
         auto tk = std::make_shared<Tokens::BaseTk>(TokenType::COMMENT_BODY); initToken(tk);
         return tk;
     } else {
@@ -236,12 +235,12 @@ std::shared_ptr<Tokens::BaseTk> Lexer::nextToken(LexerStatus& ret_st) {
             auto tk = std::make_shared<Tokens::BaseTk>(tt); initToken(tk);
             return tk;
         }
-        auto tk = getTokenFromWord(ret_st); initToken(tk);
+        auto tk = getTokenFromWord(); initToken(tk);
         return tk;
     }
 }
 
-std::shared_ptr<Tokens::BaseTk> Lexer::getTokenFromWord(LexerStatus& ret_st) {
+std::shared_ptr<Tokens::BaseTk> Lexer::getTokenFromWord() {
     std::string_view word(file_->c_str() + currTkStart_, pos_ - currTkStart_);
     if (word.empty())
         throw std::runtime_error("cannot lex an empty word");
@@ -258,12 +257,12 @@ std::shared_ptr<Tokens::BaseTk> Lexer::getTokenFromWord(LexerStatus& ret_st) {
         for (char c: word) {
             if (c == '.') {
                 if (isReal) {
-                    saveError(LexerStatus::LX_REAL_MANY_DOTS, "real literal with multiple dots encountered");
+                    saveError("real literal with multiple dots encountered");
                     return std::make_unique<Tokens::BaseTk>(TokenType::INVALID);
                 }
                 isReal = true;
             } else if (!isDigit(c)) {
-                saveError(LexerStatus::LX_NUMBER_WITH_LETTER, "invalid number form containing a letter");
+                saveError("invalid number form containing a letter");
                 return std::make_unique<Tokens::BaseTk>(TokenType::INVALID);
             }
         }
@@ -280,7 +279,7 @@ std::shared_ptr<Tokens::BaseTk> Lexer::getTokenFromWord(LexerStatus& ret_st) {
                 char digit = c - '0';
                 if (value > std::numeric_limits<double>::max() - digit
                     || value + digit > std::numeric_limits<double>::max() / 10) {
-                        saveError(LexerStatus::LX_REAL_EXCEED, "real literal exceeded max limit");
+                        saveError("real literal exceeded max limit");
                         return std::make_unique<Tokens::BaseTk>(TokenType::INVALID);
                     }
 
@@ -293,7 +292,7 @@ std::shared_ptr<Tokens::BaseTk> Lexer::getTokenFromWord(LexerStatus& ret_st) {
             }
 
             if (value > std::numeric_limits<double>::max() - fraction) {
-                saveError(LexerStatus::LX_REAL_EXCEED, "real literal exceeded max limit with fraction");
+                saveError("real literal exceeded max limit with fraction");
                 return std::make_unique<Tokens::BaseTk>(TokenType::INVALID);
             }
 
@@ -306,7 +305,7 @@ std::shared_ptr<Tokens::BaseTk> Lexer::getTokenFromWord(LexerStatus& ret_st) {
 
                 if (value > std::numeric_limits<long>::max() - digit
                     || value + digit > std::numeric_limits<long>::max() / 10 + 7) {
-                        saveError(LexerStatus::LX_INT_EXCEED, "integer literal exceeded max limit");
+                        saveError("integer literal exceeded max limit");
                         return std::make_unique<Tokens::BaseTk>(TokenType::INVALID);
                     }
 
@@ -373,8 +372,8 @@ TokenType Lexer::getDelimiterType(char c) {
             char c2;
             if (lookAhead(c2)) {
                 if ('*' == c2) {
-                    bits_.commentStarted = true;
-                    bits_.commentMultiline = true;
+                    flags_.commentStarted = true;
+                    flags_.commentMultiline = true;
                     move(1);
                     if (canLog(2)) {
                         std::cout << "Skip character: " << c2 << "\n";
@@ -382,8 +381,8 @@ TokenType Lexer::getDelimiterType(char c) {
                     }
                     return TokenType::COMMENT_OPEN;
                 } else if ('/' == c2) {
-                    bits_.commentStarted = true;
-                    bits_.commentMultiline = false;
+                    flags_.commentStarted = true;
+                    flags_.commentMultiline = false;
                     move(1);
                     if (canLog(2)) {
                         std::cout << "Skip character: " << c2 << "\n";
@@ -402,8 +401,12 @@ TokenType Lexer::getDelimiterType(char c) {
             char c2;
             if (lookAhead(c2))
                 if ('/' == c2) {
-                    move(1);
+                    if (!flags_.waitingForMultilineCommentClose)
+                        saveError("comment close does not have a beginning");
+                    flags_.waitingForMultilineCommentClose = false;
+
                     if (canLog(2)) std::cout << "Skip character: " << c2 << "\n";
+                    move(1);
                     return TokenType::COMMENT_CLOSE;
                 }
             return TokenType::TIMES;
@@ -446,8 +449,8 @@ bool Lexer::isEndline(char c, bool doMove) {
             char c2;
             if (lookAhead(c2)) {
                 if (c2 != 10) {
-                    saveError(LexerStatus::LX_CR_NO_LF, "encountered Carriage Return without Line Feed");
-                    bits_.eof = true;
+                    saveError("got Carriage Return without Line Feed");
+                    flags_.eof = true;
                     return 1;
                 }
                 if (doMove)
@@ -477,7 +480,7 @@ void Lexer::move(unsigned long step) noexcept {
     pos_ += step;
 }
 
-void Lexer::saveError(LexerStatus st, std::string reason) {
+void Lexer::saveError(std::string reason) {
     reporter_.report({
         .level = CompileMsg::Level::Error,
         .message = std::move(reason),
