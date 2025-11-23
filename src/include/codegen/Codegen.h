@@ -49,10 +49,11 @@ private:
     llvm::Constant* getConstInitializer(const ast::Expr& node);
     llvm::FunctionType* genRoutineType(const ast::RoutineType& node);
     void convertToFloat(llvm::Value*& llVal);
+    void codegenBlock(const ast::Block& node);
 
     llvm::Value* newHeapObject(const ast::Type& type, llvm::Type* llTy, llvm::IRBuilder<>& builder);
-    void heapObjUseCountInc();
-    void heapObjUseCountDecr();
+    void heapObjUseCountInc(llvm::Value* llPtr);
+    void heapObjUseCountDecr(llvm::Value* llPtr);
     llvm::Value* codegenIdRefPtr(const ast::Entity& node);
 private:
     std::unordered_map<const ast::Decl*, llvm::Value*> vars_;
@@ -60,11 +61,10 @@ private:
     struct {
         llvm::Constant *strTrue, *strFalse;
         llvm::Function *main;
-        // llvm::StructType *heapObjPtr;
-        // llvm::StructType *array, *record;
     } globals_;
     struct {
         llvm::Type *real, *integer;
+        llvm::StructType *heapObj;
     } globalTys_;
 
     std::shared_ptr<ast::Ast> ast_;

@@ -20,14 +20,9 @@ Codegen::Codegen(std::shared_ptr<ast::Ast> ast)
 {
     globalTys_.integer = llvm::Type::getInt64Ty(*context_);
     globalTys_.real = llvm::Type::getFloatTy(*context_);
-    // heapObjTypes_.heapObjPtr = StructType::create(*context_, "hoptr");
-    // heapObjTypes_.heapObjPtr->setBody({llvm::PointerType::getInt64Ty(*context_)});
-
-    // heapObjTypes_.array = StructType::create(*context_, "heapArray");
-    // heapObjTypes_.array->setBody({llvm::PointerType::getInt64Ty(*context_)});
-
-    // heapObjTypes_.record = StructType::create(*context_, "heapRecord");
-    // heapObjTypes_.record->setBody({llvm::PointerType::getInt64Ty(*context_)});
+    globalTys_.heapObj = llvm::StructType::create(*context_, {
+        llvm::Type::getInt32Ty(*context_) /* ref_count */
+    }, "heap_obj");
 }
 
 int Codegen::configure(int* argc, char** argv) {
@@ -126,12 +121,11 @@ llvm::Value* Codegen::gen(const ast::Routine& node) {
         llvm::Type *llParamTy = llFn->getFunctionType()->getParamType(paramNo);
         llvm::Value* llVar = builder_->CreateAlloca(llParamTy, nullptr, llvm::Twine(paramName));
         vars_.emplace(param.get(), llVar);
-        
+
         builder_->CreateStore(&llParam, llVar);
     }
 
-    for (auto& u: node.body->units)
-        u->codegen(*this);
+    codegenBlock(*node.body);
 
     if (isMainRoutine_) {
         llvm::APInt llRetValInt(32 /* bitSize */, 0, true /* signed */);
@@ -156,6 +150,10 @@ llvm::Value* Codegen::gen(const ast::Assignment& node) {
 
     llvm::Value* llLhs = codegenIdRefPtr(*node.left);
     llvm::Value* llRhs = node.val->codegen(*this);
+    if (!analyzer::isPrimitiveType(*node.left->type))
+        heapObjUseCountDecr(llLhs);
+    if (!analyzer::isPrimitiveType(*node.val->type))
+        heapObjUseCountInc(llRhs);
     builder_->CreateStore(llRhs, llLhs);
 
     return nullptr;
@@ -430,7 +428,7 @@ llvm::Value* Codegen::gen(const ast::ArrayAccess& node) {
 }
 
 llvm::Value* Codegen::gen(const ast::RoutineCall& node) {
-
+    // heap obj inc
     return nullptr;
 }
 
@@ -628,6 +626,21 @@ void Codegen::convertToFloat(llvm::Value*& llVal) {
         llVal = builder_->CreateSIToFP(llVal, globalTys_.real, "itof");
 }
 
+void Codegen::codegenBlock(const ast::Block& node) {
+    for (auto& u: node.units)
+        u->codegen(*this);
+
+    for (auto& declIt: node.declMap) {
+        if (!analyzer::isPrimitiveType(*declIt.second->type)) {
+            auto it = vars_.find(declIt.second.get());
+            if (it == vars_.end())
+                llvm_unreachable("codegenBlock: var not found in map");
+
+            heapObjUseCountDecr(it->second);
+        }
+    }
+}
+
 llvm::Value* Codegen::newHeapObject(const ast::Type& type, llvm::Type* llTy, llvm::IRBuilder<>& builder) {
     if (!llTy->isStructTy())
         llvm_unreachable("newHeapObject: unexpected provided type");
@@ -672,12 +685,43 @@ llvm::Value* Codegen::newHeapObject(const ast::Type& type, llvm::Type* llTy, llv
     return llPtr;
 }
 
-void Codegen::heapObjUseCountInc() {
-
+void Codegen::heapObjUseCountInc(llvm::Value* llPtr) {
+    llvm::Value* llRefCnt = builder_->CreateStructGEP(
+        globalTys_.heapObj,
+        llPtr, 0, "h_l"
+    );
+    builder_->CreateAdd(llRefCnt, llvm::ConstantInt::get(*context_, llvm::APInt(32, 1)), "h_inc");
 }
 
-void Codegen::heapObjUseCountDecr() {
+void Codegen::heapObjUseCountDecr(llvm::Value* llPtr) {
+    llvm::Value* llRefcntPtr = builder_->CreateStructGEP(
+        globalTys_.heapObj,
+        llPtr, 0, "h_l"
+    );
 
+    llvm::Function* llFreeFn = module_->getFunction("free");
+    llvm::Function* llParentFn = builder_->GetInsertBlock()->getParent();
+    llvm::BasicBlock* llFreeBlk = llvm::BasicBlock::Create(*context_, "free_obj", llParentFn);
+    llvm::BasicBlock* llDecrBlk = llvm::BasicBlock::Create(*context_, "free_decr", llParentFn);
+    llvm::BasicBlock* llContBlk = llvm::BasicBlock::Create(*context_, "free_continue", llParentFn);
+
+    llvm::Value* llRefcntVal = builder_->CreateLoad(llvm::Type::getInt32Ty(*context_), llRefcntPtr, "h_refcnt");
+    llvm::Value* llCmp = builder_->CreateICmpSLE(llRefcntVal, llvm::ConstantInt::get(*context_, llvm::APInt(32, 1)), "h_cmp");
+    builder_->CreateCondBr(llCmp, llFreeBlk, llDecrBlk);
+
+    // free_obj
+    builder_->SetInsertPoint(llFreeBlk);
+    builder_->CreateCall(llFreeFn, {llPtr});
+    builder_->CreateBr(llContBlk);
+
+    // free_decr
+    builder_->SetInsertPoint(llDecrBlk);
+    auto* newRefCnt = builder_->CreateSub(llRefcntVal, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1), "h_decr");
+    builder_->CreateStore(newRefCnt, llRefcntPtr, "h_st");
+    builder_->CreateBr(llContBlk);
+
+    // free_continue
+    builder_->SetInsertPoint(llContBlk);
 }
 
 llvm::Value* Codegen::codegenIdRefPtr(const ast::Entity& node) {
