@@ -53,7 +53,7 @@ private:
     llvm::Value* newHeapObject(llvm::Type* llTy, llvm::IRBuilder<>& builder);
     void heapObjUseCountInc();
     void heapObjUseCountDecr();
-    llvm::Value* derefPtr(llvm::Value* llPtr, llvm::Type* llTy);
+    llvm::Value* codegenIdRefPtr(const ast::Entity& node);
 private:
     std::unordered_map<const ast::Decl*, llvm::Value*> vars_;
     std::unordered_map<std::string, llvm::Type*> typeHashMap_;
@@ -64,8 +64,8 @@ private:
         // llvm::StructType *array, *record;
     } globals_;
     struct {
-        llvm::Type *floatTy;
-    } globalTys;
+        llvm::Type *real, *integer;
+    } globalTys_;
 
     std::shared_ptr<ast::Ast> ast_;
     std::unique_ptr<llvm::LLVMContext> context_;
@@ -77,5 +77,6 @@ private:
     ast::Type* primaryType_{nullptr};
     bool globalScope_{true};
     bool isMainRoutine_{false};
+    bool getVarPtr_{false};
 };
 }

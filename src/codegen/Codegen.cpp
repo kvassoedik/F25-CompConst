@@ -9,6 +9,9 @@ using codegen::Codegen;
 using namespace ast;
 using namespace llvm;
 
+#undef llvm_unreachable
+#define llvm_unreachable(_p) throw std::runtime_error(_p)
+
 Codegen::Codegen(std::shared_ptr<ast::Ast> ast)
     : ast_(std::move(ast))
     , context_(std::make_unique<llvm::LLVMContext>())
@@ -17,7 +20,8 @@ Codegen::Codegen(std::shared_ptr<ast::Ast> ast)
 {
     primaryOffsets_.reserve(16);
 
-    globalTys.floatTy = llvm::Type::getFloatTy(*context_);
+    globalTys_.integer = llvm::Type::getInt64Ty(*context_);
+    globalTys_.real = llvm::Type::getFloatTy(*context_);
     // heapObjTypes_.heapObjPtr = StructType::create(*context_, "hoptr");
     // heapObjTypes_.heapObjPtr->setBody({llvm::PointerType::getInt64Ty(*context_)});
 
@@ -36,7 +40,6 @@ void Codegen::run() {
     initMetaGlobals();
     setupMainEntryPoint();
     genGlobalVars();
-    dump();
     genRoutines();
     dump();
 }
@@ -47,15 +50,24 @@ void Codegen::run() {
 llvm::Value* Codegen::gen(const ast::Var& node) {
     if (globalScope_) {
         llvm::Type* llTy = getType(*node.type);
-        module_->getOrInsertGlobal(node.id, llTy);
-        GlobalVariable* llGlobalVar = module_->getNamedGlobal(node.id);
+        GlobalVariable* llGlobalVar;
 
         if (analyzer::isPrimitiveType(node.type)) {
+            module_->getOrInsertGlobal(node.id, llTy);
+            llGlobalVar = module_->getNamedGlobal(node.id);
+
             llvm::Constant* llInitializer = getConstInitializer(*node.val);
             llGlobalVar->setInitializer(llInitializer);
         } else {
             if (node.type->code != TypeEnum::Array && node.type->code != TypeEnum::Record)
                 llvm_unreachable("gen Var got a non-primitive type that is not Array nor Record");
+
+            // if type is complex, store a ptr to its heap obj
+            module_->getOrInsertGlobal(node.id, llTy->getPointerTo());
+            llGlobalVar = module_->getNamedGlobal(node.id);
+            llGlobalVar->setInitializer(
+                llvm::ConstantPointerNull::get(llTy->getPointerTo())
+            );
 
             llvm::Value* llPtr = newHeapObject(llTy, *mainEntryBuilder_);
             mainEntryBuilder_->CreateStore(llPtr, llGlobalVar);
@@ -144,6 +156,10 @@ llvm::Value* Codegen::gen(const ast::Assignment& node) {
     if (globalScope_)
         llvm_unreachable("non-elided at compile-time assignment in global scope is illegal");
 
+    llvm::Value* llLhs = codegenIdRefPtr(*node.left);
+    llvm::Value* llRhs = node.val->codegen(*this);
+    builder_->CreateStore(llRhs, llLhs);
+
     return nullptr;
 }
 
@@ -170,7 +186,7 @@ llvm::Value* Codegen::gen(const ast::PrintStmt& node) {
     }
     fmtStr[i] = '\n';
 
-    llvm::Constant* llFmtStr = builder_->CreateGlobalStringPtr(fmtStr, ".fmt", 0, nullptr, false);
+    llvm::Constant* llFmtStr = builder_->CreateGlobalStringPtr(fmtStr, ".fmt", 0);
 
     std::vector<llvm::Value*> llArgs;
     llArgs.reserve(node.args.size()+1);
@@ -228,15 +244,15 @@ llvm::Value* Codegen::gen(const ast::Expr& node) {
         static_cast<const BoolLiteral&>(node).val
     );
     case ExprEnum::IntLiteral: return ConstantInt::get(
-        llvm::Type::getInt32Ty(*context_),
+        globalTys_.integer,
         static_cast<const IntLiteral&>(node).val
     );
     case ExprEnum::RealLiteral: return ConstantFP::get(
-        globalTys.floatTy,
+        globalTys_.real,
         static_cast<const RealLiteral&>(node).val
     );
     }
-    llvm_unreachable("Codegen Expr: unexpected code " + std::to_string(node.code));
+    llvm_unreachable("Codegen Expr: unexpected code " + std::to_string(static_cast<int>(node.code)));
 }
 
 llvm::Value* Codegen::gen(const ast::BinaryExpr& node) {
@@ -256,7 +272,7 @@ llvm::Value* Codegen::gen(const ast::BinaryExpr& node) {
             convertToFloat(llRight);
             return builder_->CreateFAdd(llLeft, llRight, "fadd");
         } else
-            llvm_unreachable("Codegen BinaryExpr: unexpected type " + std::to_string(node.type));
+            llvm_unreachable("Codegen BinaryExpr: unexpected type " + std::to_string(static_cast<int>(node.code)));
     }
     case ExprEnum::Subtract: {
         if (node.type->code == TypeEnum::Int) {
@@ -266,19 +282,17 @@ llvm::Value* Codegen::gen(const ast::BinaryExpr& node) {
             convertToFloat(llRight);
             return builder_->CreateFSub(llLeft, llRight, "fsub");
         } else
-            llvm_unreachable("Codegen BinaryExpr: unexpected type " + std::to_string(node.type));
+            llvm_unreachable("Codegen BinaryExpr: unexpected type " + std::to_string(static_cast<int>(node.code)));
     }
     case ExprEnum::Multiply: {
         if (node.type->code == TypeEnum::Int) {
-            llLeft->getType()->dump();
-            llRight->getType()->dump();
             return builder_->CreateMul(llLeft, llRight, "mul");
         } else if (node.type->code == TypeEnum::Real) {
             convertToFloat(llLeft);
             convertToFloat(llRight);
             return builder_->CreateFMul(llLeft, llRight, "fmul");
         } else
-            llvm_unreachable("Codegen BinaryExpr: unexpected type " + std::to_string(node.type));
+            llvm_unreachable("Codegen BinaryExpr: unexpected type " + std::to_string(static_cast<int>(node.code)));
     }
     case ExprEnum::Divide: {
         if (node.type->code == TypeEnum::Int) {
@@ -288,13 +302,13 @@ llvm::Value* Codegen::gen(const ast::BinaryExpr& node) {
             convertToFloat(llRight);
             return builder_->CreateFDiv(llLeft, llRight, "fdiv");
         } else
-            llvm_unreachable("Codegen BinaryExpr: unexpected type " + std::to_string(node.type));
+            llvm_unreachable("Codegen BinaryExpr: unexpected type " + std::to_string(static_cast<int>(node.code)));
     }
     case ExprEnum::Modulo: {
         if (node.type->code == TypeEnum::Int) {
             return builder_->CreateSRem(llLeft, llRight, "mul");
         } else
-            llvm_unreachable("Codegen BinaryExpr: unexpected type " + std::to_string(node.type));
+            llvm_unreachable("Codegen BinaryExpr: unexpected type " + std::to_string(static_cast<int>(node.code)));
     }
     case ExprEnum::And: return builder_->CreateAnd(llLeft, llRight, "and");
     case ExprEnum::Or: return builder_->CreateOr(llLeft, llRight, "or");
@@ -306,7 +320,7 @@ llvm::Value* Codegen::gen(const ast::BinaryExpr& node) {
     case ExprEnum::EQUAL: return builder_->CreateICmpEQ(llLeft, llRight, "eq");
     case ExprEnum::UNEQUAL: return builder_->CreateICmpNE(llLeft, llRight, "ne");
     }
-    llvm_unreachable("Codegen BinaryExpr: unexpected code " + std::to_string(node.code));
+    llvm_unreachable("Codegen BinaryExpr: unexpected code " + std::to_string(static_cast<int>(node.code)));
 }
 
 llvm::Value* Codegen::gen(const ast::UnaryExpr& node) {
@@ -318,7 +332,7 @@ llvm::Value* Codegen::gen(const ast::UnaryExpr& node) {
     case ExprEnum::Negate: return builder_->CreateNeg(llVal, "neg");
     case ExprEnum::Not: return builder_->CreateNot(llVal, "not");
     }
-    llvm_unreachable("Codegen UnaryExpr: unexpected code " + std::to_string(node.code));
+    llvm_unreachable("Codegen UnaryExpr: unexpected code " + std::to_string(static_cast<int>(node.code)));
 }
 
 llvm::Value* Codegen::gen(const ast::IdRef& node) {
@@ -331,16 +345,9 @@ llvm::Value* Codegen::gen(const ast::IdRef& node) {
         llvm_unreachable("Codegen IdRef ref is not yet added to vars map");
 
     llvm::Type* llTy = getType(*varDecl->type); // pointers are opaque, thus we need to get the type from AST again
-    llvm::Value* llLoad = builder_->CreateLoad(llTy, it->second);
-
+    
     if (node.next) {
-        // llLoad stores a ptr, deref it first
-        llvm::Value* llDeref = builder_->CreateLoad(
-            llvm::Type::getDoubleTy(*context_)->getPointerTo(),
-            llLoad,
-            "deref"
-        );
-        primaryType_ = node.type.get();
+        primaryType_ = varDecl->type.get();
 
         // Struct GEP requires a 0 offset first
         primaryOffsets_.push_back(
@@ -350,12 +357,20 @@ llvm::Value* Codegen::gen(const ast::IdRef& node) {
         // primaryOffsets_ will be filled by each .next node
         node.next->codegen(*this);
 
-        std::cout << "Primary GEP\n";
-        llvm::Value* llGep = builder_->CreateGEP(llTy, llDeref, primaryOffsets_);
+        llvm::Value* llGep = builder_->CreateGEP(llTy, it->second, primaryOffsets_);
         primaryOffsets_.clear();
-        return llGep;
+
+        if (getVarPtr_)
+            // Get ptr
+            return llGep;
+
+        // Get value
+        llvm::Type* llMemberTy = getType(*primaryType_);
+        llvm::Value* llLoad = builder_->CreateLoad(llMemberTy, llGep);
+        return llLoad;
     }
 
+    llvm::Value* llLoad = builder_->CreateLoad(llTy, it->second);
     return llLoad;
 }
 
@@ -374,11 +389,14 @@ llvm::Value* Codegen::gen(const ast::RecordMember& node) {
         }
         offset++;
     }
+
     if (offset == members.size())
         llvm_unreachable("Codegen RecordMember: member not found by name");
 
     primaryOffsets_.push_back(
-        llvm::ConstantInt::get(*context_, llvm::APInt(32, offset))
+        llvm::ConstantInt::get(*context_, llvm::APInt(32,
+            offset + 1 // +1 because there's a hidden refcount member offset 0
+        ))
     );
 
     if (node.next)
@@ -398,9 +416,9 @@ llvm::Value* Codegen::gen(const ast::ArrayAccess& node) {
         llvm_unreachable("Codegen ArrayAccess: val got null");
     
     primaryOffsets_.push_back(llOffset);
+    primaryType_ = node.getType()->elemType.get();
 
     if (node.next) {
-        primaryType_ = node.getType()->elemType.get();
         node.next->codegen(*this);
     }
 
@@ -417,8 +435,8 @@ llvm::Value* Codegen::gen(const ast::RoutineCall& node) {
 llvm::Type* Codegen::genType(const ast::Type& node) {
     switch (node.code) {
     case TypeEnum::Bool: return llvm::Type::getInt1Ty(*context_);
-    case TypeEnum::Int: return llvm::Type::getInt32Ty(*context_);
-    case TypeEnum::Real: return globalTys.floatTy;
+    case TypeEnum::Int: return globalTys_.integer;
+    case TypeEnum::Real: return globalTys_.real;
     default:
         llvm_unreachable("genType on Type class called with invalid code");
     }
@@ -470,9 +488,9 @@ llvm::Type* Codegen::getType(const ast::Type& node) {
 // ------------------------------ Private methods ------------------------------
 // -----------------------------------------------------------------------------
 
-// LLVM builder CreateGlobalStrPtr doesn't work outside of insertion block, hence done manually
+// LLVM builder CreateGlobalStringPtr doesn't work outside of insertion block, hence done manually
 llvm::Constant* Codegen::newGlobalStrGlobalScope(const char* str, const char* label) {
-    auto *llData = llvm::ConstantDataArray::getString(*context_, str, false /* null terminator */);
+    auto *llData = llvm::ConstantDataArray::getString(*context_, str, true /* null terminator */);
     auto *llGlobal = new llvm::GlobalVariable(
         *module_, llData->getType(), true,
         llvm::GlobalValue::PrivateLinkage, llData, label
@@ -487,12 +505,12 @@ llvm::Constant* Codegen::newGlobalStrGlobalScope(const char* str, const char* la
 
 void Codegen::setupMainEntryPoint() {
     mainEntryBuilder_ = std::make_unique<llvm::IRBuilder<>>(*context_);
-    
+
     llvm::FunctionType *llTy = llvm::FunctionType::get(
-        llvm::IntegerType::getInt32Ty(*context_),
-        std::vector<llvm::Type *>(), false /* isVarArgs */
+        llvm::Type::getInt32Ty(*context_),
+        false /* isVarArgs */
     );
-    llvm::Function *llFn = llvm::Function::Create(llTy, llvm::Function::ExternalLinkage, "main", module_.get());
+    llvm::Function *llFn = llvm::Function::Create(llTy, llvm::GlobalValue::ExternalLinkage, "main", module_.get());
     llvm::BasicBlock *mainBasicBlock = llvm::BasicBlock::Create(*context_, "entry", llFn);
     mainEntryBuilder_->SetInsertPoint(mainBasicBlock);
 
@@ -564,11 +582,11 @@ llvm::Constant* Codegen::getConstInitializer(const ast::Expr& node) {
         static_cast<const BoolLiteral&>(node).val
     );
     case ExprEnum::IntLiteral: return ConstantInt::get(
-        llvm::Type::getInt32Ty(*context_),
+        globalTys_.integer,
         static_cast<const IntLiteral&>(node).val
     );
     case ExprEnum::RealLiteral: return ConstantFP::get(
-        globalTys.floatTy,
+        globalTys_.real,
         static_cast<const RealLiteral&>(node).val
     );
     default:
@@ -591,7 +609,7 @@ llvm::FunctionType* Codegen::genRoutineType(const ast::RoutineType& node) {
 
 void Codegen::convertToFloat(llvm::Value*& llVal) {
     if (llVal->getType()->isIntegerTy())
-        llVal = builder_->CreateSIToFP(llVal, globalTys.floatTy, "itof");
+        llVal = builder_->CreateSIToFP(llVal, globalTys_.real, "itof");
 }
 
 llvm::Value* Codegen::newHeapObject(llvm::Type* llTy, llvm::IRBuilder<>& builder) {
@@ -603,13 +621,13 @@ llvm::Value* Codegen::newHeapObject(llvm::Type* llTy, llvm::IRBuilder<>& builder
 
     llvm::Function *llMalloc = module_->getFunction("malloc");
     llvm::Value* llSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), sizeInBytes);
-    llvm::Value* llPtr = builder.CreateCall(llMalloc, {llSize});
+    llvm::Value* llPtr = builder.CreateCall(llMalloc, {llSize}, "obj");
     
     // Initialize with null
     llvm::Value* nullInit = llvm::Constant::getNullValue(llTy);
     builder.CreateStore(nullInit, llPtr);
 
-    llvm::Value* llRefCountField = builder.CreateStructGEP(llTy, llPtr, 0);
+    llvm::Value* llRefCountField = builder.CreateStructGEP(llTy, llPtr, 0, "refcnt");
     builder.CreateStore(
         llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1), // ref_count init to 1
         llRefCountField
@@ -626,11 +644,13 @@ void Codegen::heapObjUseCountDecr() {
 
 }
 
-llvm::Value* Codegen::derefPtr(llvm::Value* llPtr, llvm::Type* llTy) {
-    llvm::Value* llDeref = builder_->CreateLoad(
-        llTy,
-        llPtr,
-        "deref"
-    );
-    return llDeref;
+llvm::Value* Codegen::codegenIdRefPtr(const ast::Entity& node) {
+    getVarPtr_ = true;
+    llvm::Value* llPtr = node.codegen(*this);
+    getVarPtr_ = false;
+
+    if (!llPtr->getType()->isPointerTy())
+        llvm_unreachable("codegenIdRefPtr: codegen did not return a Value of ptr type");
+
+    return llPtr;
 }
