@@ -19,7 +19,7 @@ Codegen::Codegen(std::shared_ptr<ast::Ast> ast)
     , module_(std::make_unique<llvm::Module>("Module", *context_))
 {
     globalTys_.integer = llvm::Type::getInt64Ty(*context_);
-    globalTys_.real = llvm::Type::getFloatTy(*context_);
+    globalTys_.real = llvm::Type::getDoubleTy(*context_);
     globalTys_.heapObj = llvm::StructType::create(*context_, {
         llvm::Type::getInt32Ty(*context_) /* ref_count */
     }, "heap_obj");
@@ -150,10 +150,30 @@ llvm::Value* Codegen::gen(const ast::Assignment& node) {
 
     llvm::Value* llLhs = codegenIdRefPtr(*node.left);
     llvm::Value* llRhs = node.val->codegen(*this);
-    if (!analyzer::isPrimitiveType(*node.left->type))
+
+    if (node.left->type->code == TypeEnum::Int) {
+        if (node.val->type->code == TypeEnum::Real) {
+            llRhs = builder_->CreateFPToSI(llRhs, globalTys_.integer, "ftoi");
+        } else if (node.val->type->code == TypeEnum::Bool) {
+            llRhs = builder_->CreateZExt(llRhs, globalTys_.integer, "btoi");
+        }
+    } else if (node.left->type->code == TypeEnum::Real) {
+        if (node.val->type->code == TypeEnum::Int) {
+            llRhs = builder_->CreateSIToFP(llRhs, globalTys_.real, "itof");
+        } else if (node.val->type->code == TypeEnum::Bool) {
+            llRhs = builder_->CreateZExt(llRhs, globalTys_.integer, "btoi");
+            llRhs = builder_->CreateSIToFP(llRhs, globalTys_.real, "itof");
+        }
+    } else if (node.left->type->code == TypeEnum::Bool) {
+        if (node.val->type->code == TypeEnum::Int) {
+            llRhs = builder_->CreateICmpNE(llRhs, llvm::ConstantInt::get(*context_, llvm::APInt(1, 0)), "itob");
+        }
+    } else if (node.left->type->code == TypeEnum::Array || node.left->type->code == TypeEnum::Record) {
         heapObjUseCountDecr(llLhs);
-    if (!analyzer::isPrimitiveType(*node.val->type))
         heapObjUseCountInc(llRhs);
+    } else
+        llvm_unreachable("gen Assignment: unexpected lhs type code");
+
     builder_->CreateStore(llRhs, llLhs);
 
     return nullptr;
@@ -161,7 +181,7 @@ llvm::Value* Codegen::gen(const ast::Assignment& node) {
 
 llvm::Value* Codegen::gen(const ast::PrintStmt& node) {
     std::string fmtStr;
-    fmtStr.resize(std::max(node.args.size()*3, 1UL));
+    fmtStr.resize(std::max(node.args.size()*3  /* 3 chars for each param, including space */, 1UL));
 
     size_t i = 0;
     for (auto& arg: node.args) {
@@ -603,9 +623,8 @@ llvm::Constant* Codegen::getConstInitializer(const ast::Expr& node) {
         globalTys_.real,
         static_cast<const RealLiteral&>(node).val
     );
-    default:
-        llvm_unreachable("Codegen getConstInitializer: unexpected code");
     }
+    llvm_unreachable("Codegen getConstInitializer: unexpected code");
 }
 
 llvm::FunctionType* Codegen::genRoutineType(const ast::RoutineType& node) {
