@@ -159,10 +159,10 @@ llvm::Value* Codegen::gen(const ast::Assignment& node) {
         }
     } else if (node.left->type->code == TypeEnum::Real) {
         if (node.val->type->code == TypeEnum::Int) {
-            llRhs = builder_->CreateSIToFP(llRhs, globalTys_.real, "itof");
+            convertToDouble(llRhs);
         } else if (node.val->type->code == TypeEnum::Bool) {
             llRhs = builder_->CreateZExt(llRhs, globalTys_.integer, "btoi");
-            llRhs = builder_->CreateSIToFP(llRhs, globalTys_.real, "itof");
+            convertToDouble(llRhs);
         }
     } else if (node.left->type->code == TypeEnum::Bool) {
         if (node.val->type->code == TypeEnum::Int) {
@@ -284,57 +284,99 @@ llvm::Value* Codegen::gen(const ast::BinaryExpr& node) {
         if (node.type->code == TypeEnum::Int) {
             return builder_->CreateAdd(llLeft, llRight, "add");
         } else if (node.type->code == TypeEnum::Real) {
-            convertToFloat(llLeft);
-            convertToFloat(llRight);
+            convertToDouble(llLeft);
+            convertToDouble(llRight);
             return builder_->CreateFAdd(llLeft, llRight, "fadd");
         } else
-            llvm_unreachable("Codegen BinaryExpr: unexpected type " + std::to_string(static_cast<int>(node.code)));
+            break;
     }
     case ExprEnum::Subtract: {
         if (node.type->code == TypeEnum::Int) {
             return builder_->CreateSub(llLeft, llRight, "sub");
         } else if (node.type->code == TypeEnum::Real) {
-            convertToFloat(llLeft);
-            convertToFloat(llRight);
+            convertToDouble(llLeft);
+            convertToDouble(llRight);
             return builder_->CreateFSub(llLeft, llRight, "fsub");
         } else
-            llvm_unreachable("Codegen BinaryExpr: unexpected type " + std::to_string(static_cast<int>(node.code)));
+            break;
     }
     case ExprEnum::Multiply: {
         if (node.type->code == TypeEnum::Int) {
             return builder_->CreateMul(llLeft, llRight, "mul");
         } else if (node.type->code == TypeEnum::Real) {
-            convertToFloat(llLeft);
-            convertToFloat(llRight);
+            convertToDouble(llLeft);
+            convertToDouble(llRight);
             return builder_->CreateFMul(llLeft, llRight, "fmul");
         } else
-            llvm_unreachable("Codegen BinaryExpr: unexpected type " + std::to_string(static_cast<int>(node.code)));
+            break;
     }
     case ExprEnum::Divide: {
         if (node.type->code == TypeEnum::Int) {
             return builder_->CreateSDiv(llLeft, llRight, "div");
         } else if (node.type->code == TypeEnum::Real) {
-            convertToFloat(llLeft);
-            convertToFloat(llRight);
+            convertToDouble(llLeft);
+            convertToDouble(llRight);
             return builder_->CreateFDiv(llLeft, llRight, "fdiv");
         } else
-            llvm_unreachable("Codegen BinaryExpr: unexpected type " + std::to_string(static_cast<int>(node.code)));
+            break;
     }
     case ExprEnum::Modulo: {
         if (node.type->code == TypeEnum::Int) {
-            return builder_->CreateSRem(llLeft, llRight, "mul");
+            return builder_->CreateSRem(llLeft, llRight, "rem");
         } else
-            llvm_unreachable("Codegen BinaryExpr: unexpected type " + std::to_string(static_cast<int>(node.code)));
+            break;
     }
     case ExprEnum::And: return builder_->CreateAnd(llLeft, llRight, "and");
     case ExprEnum::Or: return builder_->CreateOr(llLeft, llRight, "or");
     case ExprEnum::Xor: return builder_->CreateXor(llLeft, llRight, "xor");
-    case ExprEnum::LESS_THAN: return builder_->CreateICmpSLT(llLeft, llRight, "lt");
-    case ExprEnum::LESS_OR_EQUAL: return builder_->CreateICmpSLE(llLeft, llRight, "le");
-    case ExprEnum::MORE_THAN: return builder_->CreateICmpSGT(llLeft, llRight, "gt");
-    case ExprEnum::MORE_OR_EQUAL: return builder_->CreateICmpSGE(llLeft, llRight, "ge");
-    case ExprEnum::EQUAL: return builder_->CreateICmpEQ(llLeft, llRight, "eq");
-    case ExprEnum::UNEQUAL: return builder_->CreateICmpNE(llLeft, llRight, "ne");
+    case ExprEnum::LESS_THAN: {
+        if (node.left->type->code == TypeEnum::Real || node.right->type->code == TypeEnum::Real) {
+            convertToDouble(llLeft);
+            convertToDouble(llRight);
+            return builder_->CreateFCmpOLT(llLeft, llRight, "flt");
+        }
+        return builder_->CreateICmpSLT(llLeft, llRight, "lt");
+    }
+    case ExprEnum::LESS_OR_EQUAL: {
+        if (node.left->type->code == TypeEnum::Real || node.right->type->code == TypeEnum::Real) {
+            convertToDouble(llLeft);
+            convertToDouble(llRight);
+            return builder_->CreateFCmpOLE(llLeft, llRight, "fle");
+        }
+        return builder_->CreateICmpSLE(llLeft, llRight, "le");
+    }
+    case ExprEnum::MORE_THAN: {
+        if (node.left->type->code == TypeEnum::Real || node.right->type->code == TypeEnum::Real) {
+            convertToDouble(llLeft);
+            convertToDouble(llRight);
+            return builder_->CreateFCmpOGT(llLeft, llRight, "fgt");
+        }
+        return builder_->CreateICmpSGT(llLeft, llRight, "gt");
+    }
+    case ExprEnum::MORE_OR_EQUAL: {
+        if (node.left->type->code == TypeEnum::Real || node.right->type->code == TypeEnum::Real) {
+            convertToDouble(llLeft);
+            convertToDouble(llRight);
+            return builder_->CreateFCmpOGE(llLeft, llRight, "fge");
+        }
+        return builder_->CreateICmpSGE(llLeft, llRight, "ge");
+    }
+    case ExprEnum::EQUAL: {
+        if (node.left->type->code == TypeEnum::Real || node.right->type->code == TypeEnum::Real) {
+            convertToDouble(llLeft);
+            convertToDouble(llRight);
+            return builder_->CreateFCmpOEQ(llLeft, llRight, "feq");
+        }
+        return builder_->CreateICmpEQ(llLeft, llRight, "eq");
+    }
+    case ExprEnum::UNEQUAL: {
+        if (node.left->type->code == TypeEnum::Real || node.right->type->code == TypeEnum::Real) {
+            convertToDouble(llLeft);
+            convertToDouble(llRight);
+            return builder_->CreateFCmpONE(llLeft, llRight, "fne");
+        }
+        return builder_->CreateICmpNE(llLeft, llRight, "ne");
+    }
     }
     llvm_unreachable("Codegen BinaryExpr: unexpected code " + std::to_string(static_cast<int>(node.code)));
 }
@@ -640,7 +682,7 @@ llvm::FunctionType* Codegen::genRoutineType(const ast::RoutineType& node) {
     return llvm::FunctionType::get(llRetTy, llParamTy, false /* isVarArgs */);
 }
 
-void Codegen::convertToFloat(llvm::Value*& llVal) {
+void Codegen::convertToDouble(llvm::Value*& llVal) {
     if (llVal->getType()->isIntegerTy())
         llVal = builder_->CreateSIToFP(llVal, globalTys_.real, "itof");
 }

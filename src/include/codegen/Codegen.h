@@ -48,7 +48,7 @@ private:
     llvm::Type* getType(const ast::Type& node);
     llvm::Constant* getConstInitializer(const ast::Expr& node);
     llvm::FunctionType* genRoutineType(const ast::RoutineType& node);
-    void convertToFloat(llvm::Value*& llVal);
+    void convertToDouble(llvm::Value*& llVal);
     void codegenBlock(const ast::Block& node);
 
     llvm::Value* newHeapObject(const ast::Type& type, llvm::Type* llTy, llvm::IRBuilder<>& builder);
