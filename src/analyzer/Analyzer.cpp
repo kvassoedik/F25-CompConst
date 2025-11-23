@@ -514,6 +514,8 @@ void Analyzer::validate(ReturnStmt& node) {
 
         auto opt = optimizer_.computeExpr(*node.val);
         if (opt) node.val = std::move(opt);
+
+        node.val->isNamed = true;
     } else {
         if (currRoutine_->getType()->retType) {
             saveError(
@@ -595,7 +597,10 @@ void Analyzer::validate(Assignment& node) {
         if (!currRoutine_) {
             saveError("non-compile-time evaluated assignment in global scope is illegal", node.span);
         }
-    }
+    } else
+        return;
+
+    node.val->isNamed = true;
 }
 
 void Analyzer::validate(Var& node) {

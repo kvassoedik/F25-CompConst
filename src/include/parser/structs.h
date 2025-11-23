@@ -131,7 +131,8 @@ struct Expr : public Entity {
 public:
     std::shared_ptr<Type> type;
     ExprEnum code;
-    bool knownPrimitive{false};
+    bool knownPrimitive{false}; // is known at compile-time
+    bool isNamed{false}; // is set to a variable
 };
 
 struct RangeSpecifier : public Entity {
@@ -174,6 +175,7 @@ struct IdRef final: public Primary {
     IdRef(const Ast& ast, Tokens::Span span, std::string id)
         : Primary(ast, span), id(std::move(id)) {
             code = ExprEnum::IdRef;
+            isNamed = true;
         }
 
     AST_DEBUGTREE_PRINT_METHOD

@@ -99,7 +99,7 @@ std::pair<bool, std::shared_ptr<Tokens::BaseTk>> Parser::parseEntity() {
             if (!tk || tk->type != TokenType::ASSIGNMENT) {
                 ExprEnum code;
                 Primary* next = node.get();
-                while (next) { code = node->code; next = node->next.get(); }
+                while (next) { code = node->code; next = next->next.get(); }
                 if (code == ExprEnum::RoutineCall) {
                     currBlock_->units.push_back(std::move(node));
                     break;
