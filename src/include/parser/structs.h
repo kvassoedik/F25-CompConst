@@ -71,6 +71,7 @@ struct TypeDecl final : public Decl {
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_VALIDATE_METHOD
+    CODEGEN_METHOD
 };
 
 struct Block final : public Entity {

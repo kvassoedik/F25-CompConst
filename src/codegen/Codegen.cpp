@@ -18,8 +18,6 @@ Codegen::Codegen(std::shared_ptr<ast::Ast> ast)
     , builder_(std::make_unique<llvm::IRBuilder<>>(*context_))
     , module_(std::make_unique<llvm::Module>("Module", *context_))
 {
-    primaryOffsets_.reserve(16);
-
     globalTys_.integer = llvm::Type::getInt64Ty(*context_);
     globalTys_.real = llvm::Type::getFloatTy(*context_);
     // heapObjTypes_.heapObjPtr = StructType::create(*context_, "hoptr");
@@ -52,7 +50,7 @@ llvm::Value* Codegen::gen(const ast::Var& node) {
         llvm::Type* llTy = getType(*node.type);
         GlobalVariable* llGlobalVar;
 
-        if (analyzer::isPrimitiveType(node.type)) {
+        if (analyzer::isPrimitiveType(*node.type)) {
             module_->getOrInsertGlobal(node.id, llTy);
             llGlobalVar = module_->getNamedGlobal(node.id);
 
@@ -69,7 +67,7 @@ llvm::Value* Codegen::gen(const ast::Var& node) {
                 llvm::ConstantPointerNull::get(llTy->getPointerTo())
             );
 
-            llvm::Value* llPtr = newHeapObject(llTy, *mainEntryBuilder_);
+            llvm::Value* llPtr = newHeapObject(*node.type, llTy, *mainEntryBuilder_);
             mainEntryBuilder_->CreateStore(llPtr, llGlobalVar);
         }
 
@@ -82,7 +80,7 @@ llvm::Value* Codegen::gen(const ast::Var& node) {
             llParentFn->getEntryBlock().begin()
         );
 
-        if (analyzer::isPrimitiveType(node.type)) {
+        if (analyzer::isPrimitiveType(*node.type)) {
             llvm::Value* llInitializer = node.val->codegen(*this);
             llvm::AllocaInst* llVar = tmpBuilder.CreateAlloca(llInitializer->getType(), nullptr, node.id);
             builder_->CreateStore(llInitializer, llVar);
@@ -93,7 +91,7 @@ llvm::Value* Codegen::gen(const ast::Var& node) {
                 llvm_unreachable("gen Var got a non-primitive type that is not Array nor Record");
 
             llvm::Type* llTy = getType(*node.type);
-            llvm::Value* llVar = newHeapObject(llTy, *builder_);
+            llvm::Value* llVar = newHeapObject(*node.type, llTy, *builder_);
             vars_.emplace(&node, llVar);
             return llVar;
         }
@@ -344,38 +342,34 @@ llvm::Value* Codegen::gen(const ast::IdRef& node) {
     if (it == vars_.end())
         llvm_unreachable("Codegen IdRef ref is not yet added to vars map");
 
-    llvm::Type* llTy = getType(*varDecl->type); // pointers are opaque, thus we need to get the type from AST again
-    
+    llvm::Type* llTy = getType(*varDecl->type); // pointers are opaque, so we need to get the type from AST again
     if (node.next) {
         primaryType_ = varDecl->type.get();
+        llPrimaryTy_ = llTy;
 
-        // Struct GEP requires a 0 offset first
-        primaryOffsets_.push_back(
-            llvm::ConstantInt::get(*context_, llvm::APInt(32, 0))
-        );
-
-        // primaryOffsets_ will be filled by each .next node
-        node.next->codegen(*this);
-
-        llvm::Value* llGep = builder_->CreateGEP(llTy, it->second, primaryOffsets_);
-        primaryOffsets_.clear();
+        llPrimaryPtr_ = it->second;
+        llvm::Value* llFieldsGep = node.next->codegen(*this);
+        llPrimaryPtr_ = nullptr;
 
         if (getVarPtr_)
             // Get ptr
-            return llGep;
+            return llFieldsGep;
 
         // Get value
         llvm::Type* llMemberTy = getType(*primaryType_);
-        llvm::Value* llLoad = builder_->CreateLoad(llMemberTy, llGep);
+        llvm::Value* llLoad = builder_->CreateLoad(llMemberTy, llFieldsGep);
         return llLoad;
     }
+
+    if (getVarPtr_)
+        return it->second;
 
     llvm::Value* llLoad = builder_->CreateLoad(llTy, it->second);
     return llLoad;
 }
 
 llvm::Value* Codegen::gen(const ast::RecordMember& node) {
-    if (primaryOffsets_.empty())
+    if (llPrimaryPtr_ == nullptr)
         llvm_unreachable("Codegen RecordMember: rogue");
     if (primaryType_->code != TypeEnum::Record)
         llvm_unreachable("Codegen RecordMember: parent type is not a record");
@@ -393,20 +387,20 @@ llvm::Value* Codegen::gen(const ast::RecordMember& node) {
     if (offset == members.size())
         llvm_unreachable("Codegen RecordMember: member not found by name");
 
-    primaryOffsets_.push_back(
-        llvm::ConstantInt::get(*context_, llvm::APInt(32,
-            offset + 1 // +1 because there's a hidden refcount member offset 0
-        ))
-    );
+    // Return ptr to this field
+    llvm::Value* llFieldPtr = builder_->CreateStructGEP(llPrimaryTy_, llPrimaryPtr_,
+        offset + 1 /* +1 to skip over ref_count */);
 
-    if (node.next)
-        node.next->codegen(*this);
-
-    return nullptr;
+    if (node.next) {
+        llPrimaryPtr_ = llFieldPtr;
+        llPrimaryTy_ = getType(*primaryType_);
+        return node.next->codegen(*this);
+    }
+    return llFieldPtr;
 }
 
 llvm::Value* Codegen::gen(const ast::ArrayAccess& node) {
-    if (primaryOffsets_.empty())
+    if (llPrimaryPtr_ == nullptr)
         llvm_unreachable("Codegen ArrayAccess: rogue");
     if (primaryType_->code != TypeEnum::Array)
         llvm_unreachable("Codegen ArrayAccess: parent type is not an array");
@@ -414,18 +408,29 @@ llvm::Value* Codegen::gen(const ast::ArrayAccess& node) {
     llvm::Value* llOffset = node.val->codegen(*this);
     if (llOffset == nullptr)
         llvm_unreachable("Codegen ArrayAccess: val got null");
-    
-    primaryOffsets_.push_back(llOffset);
+
+    // +1 to skip over ref_count 
+    llvm::Value* llRealOffset = builder_->CreateAdd(llOffset, llvm::ConstantInt::get(*context_, llvm::APInt(32, 1)));
+
+    // Return ptr to this element
     primaryType_ = node.getType()->elemType.get();
+    llvm::Value* llElemPtr = builder_->CreateGEP(llPrimaryTy_, llPrimaryPtr_,
+        {
+            llvm::ConstantInt::get(*context_, llvm::APInt(32, 0)), // deref ptr to parent obj
+            llRealOffset,
+        }
+    );
 
     if (node.next) {
-        node.next->codegen(*this);
+        llPrimaryPtr_ = llElemPtr;
+        llPrimaryTy_ = getType(*primaryType_);
+        return node.next->codegen(*this);
     }
-
-    return nullptr;
+    return llElemPtr;
 }
 
 llvm::Value* Codegen::gen(const ast::RoutineCall& node) {
+
     return nullptr;
 }
 
@@ -444,13 +449,19 @@ llvm::Type* Codegen::genType(const ast::Type& node) {
 
 llvm::Type* Codegen::genType(const ast::ArrayType& node) {
     llvm::Type* llElemTy = getType(*node.elemType);
+    if (llElemTy->isStructTy() || llElemTy->isArrayTy()) {
+        // If element type is complex, array will store pointers to heap-allocated objects
+        llElemTy = llElemTy->getPointerTo();
+    }
+
     llvm::Constant* llSize = getConstInitializer(*node.size);
+    int64_t size = static_cast<llvm::ConstantInt*>(llSize)->getSExtValue();
 
     llvm::Type* llTy = StructType::create({
         // ref_count
         llvm::Type::getInt32Ty(*context_),
         // static array itself
-        llvm::ArrayType::get(llElemTy, static_cast<llvm::ConstantInt*>(llSize)->getSExtValue())
+        llvm::ArrayType::get(llElemTy, size)
     });
     return llTy;
 }
@@ -463,7 +474,12 @@ llvm::Type* Codegen::genType(const ast::RecordType& node) {
 
     for (auto& member: node.members) {
         llvm::Type* llMemberTy = getType(*member->type);
-        members.push_back(llMemberTy);
+        if (llMemberTy->isStructTy() || llMemberTy->isArrayTy()) {
+            // If type is complex, the parent struct will store a ptr to heap-allocated object
+            members.push_back(llMemberTy->getPointerTo());
+        } else {
+            members.push_back(llMemberTy);
+        }
     }
 
     llvm::StructType* llTy = StructType::create(members);
@@ -612,9 +628,12 @@ void Codegen::convertToFloat(llvm::Value*& llVal) {
         llVal = builder_->CreateSIToFP(llVal, globalTys_.real, "itof");
 }
 
-llvm::Value* Codegen::newHeapObject(llvm::Type* llTy, llvm::IRBuilder<>& builder) {
+llvm::Value* Codegen::newHeapObject(const ast::Type& type, llvm::Type* llTy, llvm::IRBuilder<>& builder) {
     if (!llTy->isStructTy())
         llvm_unreachable("newHeapObject: unexpected provided type");
+
+    const ast::RecordType& recordType = static_cast<const RecordType&>(type);
+    llvm::StructType* llStructTy = static_cast<llvm::StructType*>(llTy);
 
     const llvm::DataLayout& llDl = module_->getDataLayout();
     uint64_t sizeInBytes = llDl.getTypeAllocSize(llTy);
@@ -623,15 +642,32 @@ llvm::Value* Codegen::newHeapObject(llvm::Type* llTy, llvm::IRBuilder<>& builder
     llvm::Value* llSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), sizeInBytes);
     llvm::Value* llPtr = builder.CreateCall(llMalloc, {llSize}, "obj");
     
-    // Initialize with null
-    llvm::Value* nullInit = llvm::Constant::getNullValue(llTy);
+    // Initialize heap-object fields
+    const auto elemNum = llStructTy->getNumElements();
+    std::vector<llvm::Constant*> llInitFields;
+    llInitFields.reserve(elemNum);
+
+    // ref_count init to 1
+    llInitFields.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1));
+    // Initialize the rest
+    for (unsigned i = 1; i < elemNum; ++i) {
+        llvm::Type* llElemTy = llStructTy->getElementType(i);
+        llInitFields.push_back(llvm::Constant::getNullValue(llElemTy));
+    }
+
+    llvm::Value* nullInit = llvm::ConstantStruct::get(llStructTy, llInitFields);
     builder.CreateStore(nullInit, llPtr);
 
-    llvm::Value* llRefCountField = builder.CreateStructGEP(llTy, llPtr, 0, "refcnt");
-    builder.CreateStore(
-        llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1), // ref_count init to 1
-        llRefCountField
-    );
+    // For complex types, recursively heap-allocate and initialize the parent's field with the ptr
+    for (unsigned i = 1; i < elemNum; ++i) {
+        const ast::Type& elemType = *recordType.members[i-1]->type;
+        if (!analyzer::isPrimitiveType(elemType)) {
+            llvm::Type* llElemTy = getType(elemType);
+            llvm::Value* llFieldPtr = newHeapObject(elemType, llElemTy, builder);
+            llvm::Value* llGep = builder.CreateStructGEP(llStructTy, llPtr, i, "field_obj");
+            builder.CreateStore(llFieldPtr, llGep);
+        }
+    }
 
     return llPtr;
 }

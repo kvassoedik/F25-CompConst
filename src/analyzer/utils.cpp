@@ -5,8 +5,8 @@
 
 using namespace ast;
 
-bool analyzer::isPrimitiveType(const std::shared_ptr<Type>& t) {
-    return t->code == TypeEnum::Bool || t->code == TypeEnum::Int || t->code == TypeEnum::Real;
+bool analyzer::isPrimitiveType(const ast::Type& t) {
+    return t.code == TypeEnum::Bool || t.code == TypeEnum::Int || t.code == TypeEnum::Real;
 }
 
 bool analyzer::areTypesEqual(const std::shared_ptr<Type>& t1, const std::shared_ptr<Type>& t2) {

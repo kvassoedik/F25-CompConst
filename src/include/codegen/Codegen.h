@@ -50,7 +50,7 @@ private:
     llvm::FunctionType* genRoutineType(const ast::RoutineType& node);
     void convertToFloat(llvm::Value*& llVal);
 
-    llvm::Value* newHeapObject(llvm::Type* llTy, llvm::IRBuilder<>& builder);
+    llvm::Value* newHeapObject(const ast::Type& type, llvm::Type* llTy, llvm::IRBuilder<>& builder);
     void heapObjUseCountInc();
     void heapObjUseCountDecr();
     llvm::Value* codegenIdRefPtr(const ast::Entity& node);
@@ -73,8 +73,9 @@ private:
     std::unique_ptr<llvm::Module> module_;
     std::unique_ptr<llvm::IRBuilder<>> mainEntryBuilder_; // used for inserting global var heap obj initialization in main 
 
-    std::vector<llvm::Value*> primaryOffsets_;
-    ast::Type* primaryType_{nullptr};
+    llvm::Value* llPrimaryPtr_{nullptr};
+    ast::Type* primaryType_;
+    llvm::Type* llPrimaryTy_;
     bool globalScope_{true};
     bool isMainRoutine_{false};
     bool getVarPtr_{false};

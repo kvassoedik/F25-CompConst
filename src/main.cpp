@@ -94,9 +94,9 @@ int main(int argc, char **argv) {
     if (analyzer.hasErrors())
         return 5;
 #if AST_DEBUG_ON
-    ast::debugInfo.printAll();
+    // ast::debugInfo.printAll();
 #endif
 
-    std::cout << "\n" << ANSI_START ANSI_GREEN ANSI_APPLY << std::string(28, '-') << " LLVM DUMP " << std::string(28, '-') << ANSI_RESET << "\n\n";
+    // std::cout << "\n" << ANSI_START ANSI_GREEN ANSI_APPLY << std::string(28, '-') << " LLVM DUMP " << std::string(28, '-') << ANSI_RESET << "\n\n";
     codegen.run();
 }

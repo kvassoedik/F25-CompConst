@@ -351,7 +351,7 @@ void Analyzer::validate(BinaryExpr& node) {
         if (
             !isErrorType(expr.left->type) && !isErrorType(expr.right->type) && (
                 !areTypesEqual(expr.left->type, expr.right->type)
-                || !isPrimitiveType(expr.left->type) || !isPrimitiveType(expr.right->type)
+                || !isPrimitiveType(*expr.left->type) || !isPrimitiveType(*expr.right->type)
             )
         ) {
             saveError("equality used with incompatible types: " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
@@ -414,7 +414,7 @@ void Analyzer::validate(PrintStmt& node) {
     for (auto& arg: node.args) {
         arg->validate(*this);
 
-        if (!isPrimitiveType(arg->type) && !isErrorType(arg->type))
+        if (!isPrimitiveType(*arg->type) && !isErrorType(arg->type))
             saveError(
                 "cannot print non-primitive type: " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY)
                 + stringifyType(arg->type) + ANSI_RESET,
