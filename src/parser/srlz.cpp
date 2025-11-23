@@ -68,7 +68,7 @@ void srlz::type(const RecordType& node, options o) {
         node.members[i]->type->serializeType({.os = output});
         if (i + 1 < node.members.size()) output << ", ";
     }
-    if (o.ir)
+    if (!o.ir)
         output << "}";
     o.os << output.str();
 }

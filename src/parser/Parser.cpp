@@ -851,7 +851,7 @@ std::shared_ptr<Primary> Parser::parsePrimary() {
             }
 
             tokens_.move();
-            auto&& node = ast_->mk<IdRef>(nextId->span, ID_STR(nextId));
+            auto&& node = ast_->mk<RecordMember>(nextId->span, ID_STR(nextId));
             (*head)->next = std::move(node);
             head = &(*head)->next;
         } else if (tk->type == TokenType::SQUARE_BRACKET_OPEN) {
