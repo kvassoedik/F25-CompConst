@@ -39,6 +39,7 @@ public:
     llvm::Type* genType(const ast::RecordType& node) override;
 private:
     llvm::Constant* newGlobalStrGlobalScope(const char* str, const char* label);
+    void setupMainEntryPoint();
     void initMetaGlobals();
     void genGlobalVars();
     void genRoutines();
@@ -49,25 +50,28 @@ private:
     llvm::FunctionType* genRoutineType(const ast::RoutineType& node);
     void convertToFloat(llvm::Value*& llVal);
 
-    llvm::Value* newHeapObject(llvm::TypeSize bitSize);
+    llvm::Value* newHeapObject(llvm::Type* llTy, llvm::IRBuilder<>& builder);
     void heapObjUseCountInc();
     void heapObjUseCountDecr();
+    llvm::Value* derefPtr(llvm::Value* llPtr, llvm::Type* llTy);
 private:
     std::unordered_map<const ast::Decl*, llvm::Value*> vars_;
     std::unordered_map<std::string, llvm::Type*> typeHashMap_;
     struct {
         llvm::Constant *strTrue, *strFalse;
+        llvm::Function *main;
         // llvm::StructType *heapObjPtr;
         // llvm::StructType *array, *record;
     } globals_;
     struct {
         llvm::Type *floatTy;
-    } mainTys_;
+    } globalTys;
 
     std::shared_ptr<ast::Ast> ast_;
     std::unique_ptr<llvm::LLVMContext> context_;
     std::unique_ptr<llvm::IRBuilder<>> builder_;
     std::unique_ptr<llvm::Module> module_;
+    std::unique_ptr<llvm::IRBuilder<>> mainEntryBuilder_; // used for inserting global var heap obj initialization in main 
 
     std::vector<llvm::Value*> primaryOffsets_;
     ast::Type* primaryType_{nullptr};

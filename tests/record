@@ -1,0 +1,7 @@
+
+var x: record var num: integer ; var bool: boolean end
+
+routine main() is
+    //x.num := x.num - 1
+    print x.num
+end

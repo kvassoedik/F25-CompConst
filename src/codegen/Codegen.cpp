@@ -17,7 +17,7 @@ Codegen::Codegen(std::shared_ptr<ast::Ast> ast)
 {
     primaryOffsets_.reserve(16);
 
-    mainTys_.floatTy = llvm::Type::getFloatTy(*context_);
+    globalTys.floatTy = llvm::Type::getFloatTy(*context_);
     // heapObjTypes_.heapObjPtr = StructType::create(*context_, "hoptr");
     // heapObjTypes_.heapObjPtr->setBody({llvm::PointerType::getInt64Ty(*context_)});
 
@@ -34,7 +34,9 @@ int Codegen::configure(int* argc, char** argv) {
 
 void Codegen::run() {
     initMetaGlobals();
+    setupMainEntryPoint();
     genGlobalVars();
+    dump();
     genRoutines();
     dump();
 }
@@ -46,9 +48,18 @@ llvm::Value* Codegen::gen(const ast::Var& node) {
     if (globalScope_) {
         llvm::Type* llTy = getType(*node.type);
         module_->getOrInsertGlobal(node.id, llTy);
-
         GlobalVariable* llGlobalVar = module_->getNamedGlobal(node.id);
-        llGlobalVar->setInitializer(getConstInitializer(*node.val));
+
+        if (analyzer::isPrimitiveType(node.type)) {
+            llvm::Constant* llInitializer = getConstInitializer(*node.val);
+            llGlobalVar->setInitializer(llInitializer);
+        } else {
+            if (node.type->code != TypeEnum::Array && node.type->code != TypeEnum::Record)
+                llvm_unreachable("gen Var got a non-primitive type that is not Array nor Record");
+
+            llvm::Value* llPtr = newHeapObject(llTy, *mainEntryBuilder_);
+            mainEntryBuilder_->CreateStore(llPtr, llGlobalVar);
+        }
 
         vars_.emplace(&node, llGlobalVar);
         return llGlobalVar;
@@ -70,7 +81,7 @@ llvm::Value* Codegen::gen(const ast::Var& node) {
                 llvm_unreachable("gen Var got a non-primitive type that is not Array nor Record");
 
             llvm::Type* llTy = getType(*node.type);
-            llvm::Value* llVar = newHeapObject(llTy->getPrimitiveSizeInBits());
+            llvm::Value* llVar = newHeapObject(llTy, *builder_);
             vars_.emplace(&node, llVar);
             return llVar;
         }
@@ -83,11 +94,19 @@ llvm::Value* Codegen::gen(const ast::Routine& node) {
 
     isMainRoutine_ = (node.id == "main");
 
-    llvm::FunctionType* llFnTy = genRoutineType(*node.getType());
-    Function* llFn = llvm::Function::Create(llFnTy, llvm::Function::ExternalLinkage, node.id, module_.get());
+    Function* llFn;
+    if (isMainRoutine_) {
+        llFn = globals_.main;
 
-    BasicBlock *entryBasicBlock = BasicBlock::Create(*context_, "entry", llFn);
-    builder_->SetInsertPoint(entryBasicBlock);
+        // Add new instructions after the mainEntryBuilder_ position
+        builder_->SetInsertPoint(mainEntryBuilder_->GetInsertBlock());
+    } else {
+        llvm::FunctionType* llFnTy = genRoutineType(*node.getType());
+        llFn = llvm::Function::Create(llFnTy, llvm::Function::ExternalLinkage, node.id, module_.get());
+
+        BasicBlock* llEntry = BasicBlock::Create(*context_, "entry", llFn);
+        builder_->SetInsertPoint(llEntry);
+    }
 
     for (auto& llParam : llFn->args()) {
         const int paramNo = llParam.getArgNo();
@@ -102,7 +121,7 @@ llvm::Value* Codegen::gen(const ast::Routine& node) {
     }
 
     for (auto& u: node.body->units)
-         u->codegen(*this);
+        u->codegen(*this);
 
     if (isMainRoutine_) {
         llvm::APInt llRetValInt(32 /* bitSize */, 0, true /* signed */);
@@ -110,8 +129,9 @@ llvm::Value* Codegen::gen(const ast::Routine& node) {
     } else if (llFn->getReturnType()->isVoidTy()) {
         builder_->CreateRetVoid();
     }
-
     isMainRoutine_ = false;
+
+    llvm::verifyFunction(*llFn);
     return nullptr;
 }
 
@@ -212,7 +232,7 @@ llvm::Value* Codegen::gen(const ast::Expr& node) {
         static_cast<const IntLiteral&>(node).val
     );
     case ExprEnum::RealLiteral: return ConstantFP::get(
-        mainTys_.floatTy,
+        globalTys.floatTy,
         static_cast<const RealLiteral&>(node).val
     );
     }
@@ -314,6 +334,12 @@ llvm::Value* Codegen::gen(const ast::IdRef& node) {
     llvm::Value* llLoad = builder_->CreateLoad(llTy, it->second);
 
     if (node.next) {
+        // llLoad stores a ptr, deref it first
+        llvm::Value* llDeref = builder_->CreateLoad(
+            llvm::Type::getDoubleTy(*context_)->getPointerTo(),
+            llLoad,
+            "deref"
+        );
         primaryType_ = node.type.get();
 
         // Struct GEP requires a 0 offset first
@@ -324,8 +350,8 @@ llvm::Value* Codegen::gen(const ast::IdRef& node) {
         // primaryOffsets_ will be filled by each .next node
         node.next->codegen(*this);
 
-        llvm::Type* llTy = getType(*varDecl->type);
-        llvm::Value* llGep = builder_->CreateGEP(llTy, llLoad, primaryOffsets_);
+        std::cout << "Primary GEP\n";
+        llvm::Value* llGep = builder_->CreateGEP(llTy, llDeref, primaryOffsets_);
         primaryOffsets_.clear();
         return llGep;
     }
@@ -392,7 +418,7 @@ llvm::Type* Codegen::genType(const ast::Type& node) {
     switch (node.code) {
     case TypeEnum::Bool: return llvm::Type::getInt1Ty(*context_);
     case TypeEnum::Int: return llvm::Type::getInt32Ty(*context_);
-    case TypeEnum::Real: return mainTys_.floatTy;
+    case TypeEnum::Real: return globalTys.floatTy;
     default:
         llvm_unreachable("genType on Type class called with invalid code");
     }
@@ -408,11 +434,12 @@ llvm::Type* Codegen::genType(const ast::ArrayType& node) {
         // static array itself
         llvm::ArrayType::get(llElemTy, static_cast<llvm::ConstantInt*>(llSize)->getSExtValue())
     });
-    return llTy->getPointerTo();
+    return llTy;
 }
 
 llvm::Type* Codegen::genType(const ast::RecordType& node) {
-    std::vector<llvm::Type*> members(node.members.size() + 1);
+    std::vector<llvm::Type*> members;
+    members.reserve(node.members.size() + 1);
     // ref_count
     members.push_back(llvm::Type::getInt32Ty(*context_));
 
@@ -421,8 +448,8 @@ llvm::Type* Codegen::genType(const ast::RecordType& node) {
         members.push_back(llMemberTy);
     }
 
-    llvm::Type* llTy = StructType::create(members);
-    return llTy->getPointerTo();
+    llvm::StructType* llTy = StructType::create(members);
+    return llTy;
 }
 
 // Reusing type string hashes to reuse previously created llvm::Type's
@@ -458,6 +485,20 @@ llvm::Constant* Codegen::newGlobalStrGlobalScope(const char* str, const char* la
     return llvm::ConstantExpr::getGetElementPtr(llData->getType(), llGlobal, indices);
 }
 
+void Codegen::setupMainEntryPoint() {
+    mainEntryBuilder_ = std::make_unique<llvm::IRBuilder<>>(*context_);
+    
+    llvm::FunctionType *llTy = llvm::FunctionType::get(
+        llvm::IntegerType::getInt32Ty(*context_),
+        std::vector<llvm::Type *>(), false /* isVarArgs */
+    );
+    llvm::Function *llFn = llvm::Function::Create(llTy, llvm::Function::ExternalLinkage, "main", module_.get());
+    llvm::BasicBlock *mainBasicBlock = llvm::BasicBlock::Create(*context_, "entry", llFn);
+    mainEntryBuilder_->SetInsertPoint(mainBasicBlock);
+
+    globals_.main = llFn;
+}
+
 void Codegen::initMetaGlobals() {
     module_->getOrInsertFunction(
         "printf",
@@ -465,6 +506,24 @@ void Codegen::initMetaGlobals() {
             llvm::IntegerType::getInt32Ty(*context_),
             llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(*context_)),
             true /* vararg */
+        )
+    );
+
+    module_->getOrInsertFunction(
+        "malloc",
+        llvm::FunctionType::get(
+            llvm::Type::getInt8Ty(*context_)->getPointerTo(),
+            llvm::IntegerType::getInt64Ty(*context_),
+            false
+        )
+    );
+
+    module_->getOrInsertFunction(
+        "free",
+        llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*context_),
+            llvm::Type::getInt8Ty(*context_)->getPointerTo(),
+            false
         )
     );
 
@@ -509,7 +568,7 @@ llvm::Constant* Codegen::getConstInitializer(const ast::Expr& node) {
         static_cast<const IntLiteral&>(node).val
     );
     case ExprEnum::RealLiteral: return ConstantFP::get(
-        mainTys_.floatTy,
+        globalTys.floatTy,
         static_cast<const RealLiteral&>(node).val
     );
     default:
@@ -532,11 +591,31 @@ llvm::FunctionType* Codegen::genRoutineType(const ast::RoutineType& node) {
 
 void Codegen::convertToFloat(llvm::Value*& llVal) {
     if (llVal->getType()->isIntegerTy())
-        llVal = builder_->CreateSIToFP(llVal, mainTys_.floatTy, "itof");
+        llVal = builder_->CreateSIToFP(llVal, globalTys.floatTy, "itof");
 }
 
-llvm::Value* Codegen::newHeapObject(llvm::TypeSize bitSize) {
-    return nullptr;
+llvm::Value* Codegen::newHeapObject(llvm::Type* llTy, llvm::IRBuilder<>& builder) {
+    if (!llTy->isStructTy())
+        llvm_unreachable("newHeapObject: unexpected provided type");
+
+    const llvm::DataLayout& llDl = module_->getDataLayout();
+    uint64_t sizeInBytes = llDl.getTypeAllocSize(llTy);
+
+    llvm::Function *llMalloc = module_->getFunction("malloc");
+    llvm::Value* llSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), sizeInBytes);
+    llvm::Value* llPtr = builder.CreateCall(llMalloc, {llSize});
+    
+    // Initialize with null
+    llvm::Value* nullInit = llvm::Constant::getNullValue(llTy);
+    builder.CreateStore(nullInit, llPtr);
+
+    llvm::Value* llRefCountField = builder.CreateStructGEP(llTy, llPtr, 0);
+    builder.CreateStore(
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1), // ref_count init to 1
+        llRefCountField
+    );
+
+    return llPtr;
 }
 
 void Codegen::heapObjUseCountInc() {
@@ -545,4 +624,13 @@ void Codegen::heapObjUseCountInc() {
 
 void Codegen::heapObjUseCountDecr() {
 
+}
+
+llvm::Value* Codegen::derefPtr(llvm::Value* llPtr, llvm::Type* llTy) {
+    llvm::Value* llDeref = builder_->CreateLoad(
+        llTy,
+        llPtr,
+        "deref"
+    );
+    return llDeref;
 }
