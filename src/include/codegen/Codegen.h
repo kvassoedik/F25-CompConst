@@ -39,8 +39,9 @@ public:
     llvm::Type* genType(const ast::RecordType& node) override;
 private:
     llvm::Constant* newGlobalStrGlobalScope(const char* str, const char* label);
-    void setupMainEntryPoint();
     void initMetaGlobals();
+    void genMetaFunctions();
+    void setupMainEntryPoint();
     void genGlobalVars();
     void genRoutines();
     void dump();
@@ -66,7 +67,7 @@ private:
     std::vector<llvm::Value*> tmpHeapObjects_;
     struct {
         llvm::Constant *strTrue, *strFalse;
-        llvm::Function *main;
+        llvm::Function *main, *refc_inc, *refc_dcr;
     } globals_;
     struct {
         llvm::Type *real, *integer;

@@ -32,6 +32,7 @@ int Codegen::configure(int* argc, char** argv) {
 
 void Codegen::run() {
     initMetaGlobals();
+    genMetaFunctions();
     setupMainEntryPoint();
     genGlobalVars();
     genRoutines();
@@ -218,6 +219,7 @@ llvm::Value* Codegen::gen(const ast::PrintStmt& node) {
 
         // Converting bool to string on output
         if (arg->type->code == TypeEnum::Bool) {
+            llArg->dump();
             llArg = builder_->CreateSelect(llArg, globals_.strTrue, globals_.strFalse, "boolStr");
         }
 
@@ -446,16 +448,17 @@ llvm::Value* Codegen::gen(const ast::IdRef& node) {
         llPrimaryTy_ = llTy;
 
         llPrimaryPtr_ = it->second.llVarAllocation;
-        llvm::Value* llFieldsGep = node.next->codegen(*this);
+        llvm::Value* llDescendantPtr = node.next->codegen(*this);
         llPrimaryPtr_ = nullptr;
 
-        if (getVarPtr_)
+        if (getVarPtr_) {
             // Get ptr
-            return llFieldsGep;
+            return llDescendantPtr;
+        }
 
         // Get value
         llvm::Type* llMemberTy = getType(*primaryType_);
-        llvm::Value* llLoad = builder_->CreateLoad(llMemberTy, llFieldsGep);
+        llvm::Value* llLoad = builder_->CreateLoad(llMemberTy, llDescendantPtr);
         return llLoad;
     }
 
@@ -545,10 +548,33 @@ llvm::Value* Codegen::gen(const ast::RoutineCall& node) {
     if (!node.isNamed) {
         auto routineDecl = node.ref.lock();
         if (routineDecl == nullptr)
-            llvm_unreachable("gen RoutineCall: ref is nullptr");
+            llvm_unreachable("RoutineCall ref is null");
         if (!analyzer::isPrimitiveType(*routineDecl->getType()->retType)) {
             tmpHeapObjects_.push_back(llCall);
         }
+    }
+
+    if (node.next) {
+        auto routineDecl = node.ref.lock();
+        if (routineDecl == nullptr)
+            llvm_unreachable("RoutineCall ref is null");
+
+        primaryType_ = routineDecl->getType()->retType.get();
+        llPrimaryTy_ = getType(*primaryType_);
+
+        llPrimaryPtr_ = llCall;
+        llvm::Value* llDescendantPtr = node.next->codegen(*this);
+        llPrimaryPtr_ = nullptr;
+
+        if (getVarPtr_) {
+            // Get ptr
+            return llDescendantPtr;
+        }
+
+        // Get value
+        llvm::Type* llMemberTy = getType(*primaryType_);
+        llvm::Value* llLoad = builder_->CreateLoad(llMemberTy, llDescendantPtr);
+        return llLoad;
     }
 
     return llCall;
@@ -639,20 +665,6 @@ llvm::Constant* Codegen::newGlobalStrGlobalScope(const char* str, const char* la
     return llvm::ConstantExpr::getGetElementPtr(llData->getType(), llGlobal, indices);
 }
 
-void Codegen::setupMainEntryPoint() {
-    mainEntryBuilder_ = std::make_unique<llvm::IRBuilder<>>(*context_);
-
-    llvm::FunctionType *llTy = llvm::FunctionType::get(
-        llvm::Type::getInt32Ty(*context_),
-        false /* isVarArgs */
-    );
-    llvm::Function *llFn = llvm::Function::Create(llTy, llvm::GlobalValue::ExternalLinkage, "main", module_.get());
-    llvm::BasicBlock *mainBasicBlock = llvm::BasicBlock::Create(*context_, "entry", llFn);
-    mainEntryBuilder_->SetInsertPoint(mainBasicBlock);
-
-    globals_.main = llFn;
-}
-
 void Codegen::initMetaGlobals() {
     module_->getOrInsertFunction(
         "printf",
@@ -683,6 +695,99 @@ void Codegen::initMetaGlobals() {
 
     globals_.strTrue = newGlobalStrGlobalScope("true", ".str_true");
     globals_.strFalse = newGlobalStrGlobalScope("false", ".str_false");
+}
+
+void Codegen::setupMainEntryPoint() {
+    mainEntryBuilder_ = std::make_unique<llvm::IRBuilder<>>(*context_);
+
+    llvm::FunctionType *llTy = llvm::FunctionType::get(
+        llvm::Type::getInt32Ty(*context_),
+        false /* isVarArgs */
+    );
+    llvm::Function *llFn = llvm::Function::Create(llTy, llvm::GlobalValue::ExternalLinkage, "main", module_.get());
+    llvm::BasicBlock *mainBasicBlock = llvm::BasicBlock::Create(*context_, "entry", llFn);
+    mainEntryBuilder_->SetInsertPoint(mainBasicBlock);
+
+    globals_.main = llFn;
+}
+
+void Codegen::genMetaFunctions() {
+    /* .refc_inc */
+    {
+        llvm::FunctionType* llFnTy = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*context_),
+            {globalTys_.heapObj->getPointerTo()},
+            false /* isVarArgs */
+        );
+
+        llvm::Function* llFn = llvm::Function::Create(llFnTy, llvm::Function::ExternalLinkage, ".refc_inc", module_.get());
+        globals_.refc_inc = llFn;
+
+        BasicBlock* llEntryBlk = BasicBlock::Create(*context_, "entry", llFn);
+        builder_->SetInsertPoint(llEntryBlk);
+
+        // Implementation
+        llvm::Argument* llPtr = llFn->getArg(0);
+        llvm::Value* llRefcntPtr = builder_->CreateStructGEP(
+            globalTys_.heapObj,
+            llPtr, 0
+        );
+
+        llvm::Value* llRefcntVal = builder_->CreateLoad(llvm::Type::getInt32Ty(*context_), llRefcntPtr, "refcnt");
+        llvm::Value* llNewRefcnt = builder_->CreateAdd(llRefcntVal, llvm::ConstantInt::get(*context_, llvm::APInt(32, 1)));
+        builder_->CreateStore(llNewRefcnt, llRefcntPtr);
+
+        builder_->CreateRetVoid();
+    }
+    /* .refc_dcr */
+    {
+        llvm::FunctionType* llFnTy = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*context_),
+            {globalTys_.heapObj->getPointerTo()},
+            false /* isVarArgs */
+        );
+
+        llvm::Function* llFn = llvm::Function::Create(llFnTy, llvm::Function::ExternalLinkage, ".refc_dcr", module_.get());
+        globals_.refc_dcr = llFn;
+
+        BasicBlock* llEntryBlk = BasicBlock::Create(*context_, "entry", llFn);
+        builder_->SetInsertPoint(llEntryBlk);
+
+        // Implementation
+        // llvm::Type *llParamTy = llFnTy->getParamType(0);
+        // llvm::Value* llVar = builder_->CreateAlloca(llParamTy, nullptr, "objptr");
+        llvm::Argument* llPtr = llFn->getArg(0);
+        // builder_->CreateStore(llParam, llVar);
+
+        llvm::Value* llRefcntPtr = builder_->CreateStructGEP(
+            globalTys_.heapObj,
+            llPtr, 0
+        );
+
+        llvm::Function* llParentFn = builder_->GetInsertBlock()->getParent();
+        llvm::BasicBlock* llFreeBlk = llvm::BasicBlock::Create(*context_, "free", llParentFn);
+        llvm::BasicBlock* llDecrBlk = llvm::BasicBlock::Create(*context_, "dcr", llParentFn);
+        llvm::BasicBlock* llContBlk = llvm::BasicBlock::Create(*context_, "continue", llParentFn);
+
+        llvm::Value* llRefcntVal = builder_->CreateLoad(llvm::Type::getInt32Ty(*context_), llRefcntPtr, "refcnt");
+        llvm::Value* llCmp = builder_->CreateICmpSLE(llRefcntVal, llvm::ConstantInt::get(*context_, llvm::APInt(32, 1)));
+        builder_->CreateCondBr(llCmp, llFreeBlk, llDecrBlk);
+
+        // free
+        builder_->SetInsertPoint(llFreeBlk);
+        heapObjDestroy(llPtr);
+        builder_->CreateBr(llContBlk);
+
+        // dcr
+        builder_->SetInsertPoint(llDecrBlk);
+        auto* llNewRefcnt = builder_->CreateSub(llRefcntVal, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1));
+        builder_->CreateStore(llNewRefcnt, llRefcntPtr);
+        builder_->CreateBr(llContBlk);
+
+        // continue
+        builder_->SetInsertPoint(llContBlk);
+        builder_->CreateRetVoid();
+    }
 }
 
 void Codegen::genGlobalVars() {
@@ -820,44 +925,11 @@ llvm::Value* Codegen::newHeapObject(const ast::Type& type, llvm::Type* llTy, llv
 }
 
 void Codegen::heapObjUseCountInc(llvm::Value* llPtr) {
-    llvm::Value* llRefcntPtr = builder_->CreateStructGEP(
-        globalTys_.heapObj,
-        llPtr, 0, "h_gep"
-    );
-
-    llvm::Value* llRefcntVal = builder_->CreateLoad(llvm::Type::getInt32Ty(*context_), llRefcntPtr, "h_refcnt");
-    llvm::Value* llNewRefcnt = builder_->CreateAdd(llRefcntVal, llvm::ConstantInt::get(*context_, llvm::APInt(32, 1)), "h_inc");
-    builder_->CreateStore(llNewRefcnt, llRefcntPtr, "h_st");
+    builder_->CreateCall(globals_.refc_inc, {llPtr});
 }
 
 void Codegen::heapObjUseCountDecr(llvm::Value* llPtr) {
-    llvm::Value* llRefcntPtr = builder_->CreateStructGEP(
-        globalTys_.heapObj,
-        llPtr, 0, "h_gep"
-    );
-
-    llvm::Function* llParentFn = builder_->GetInsertBlock()->getParent();
-    llvm::BasicBlock* llFreeBlk = llvm::BasicBlock::Create(*context_, "free_obj", llParentFn);
-    llvm::BasicBlock* llDecrBlk = llvm::BasicBlock::Create(*context_, "free_decr", llParentFn);
-    llvm::BasicBlock* llContBlk = llvm::BasicBlock::Create(*context_, "free_continue", llParentFn);
-
-    llvm::Value* llRefcntVal = builder_->CreateLoad(llvm::Type::getInt32Ty(*context_), llRefcntPtr, "h_refcnt");
-    llvm::Value* llCmp = builder_->CreateICmpSLE(llRefcntVal, llvm::ConstantInt::get(*context_, llvm::APInt(32, 1)), "h_cmp");
-    builder_->CreateCondBr(llCmp, llFreeBlk, llDecrBlk);
-
-    // free_obj
-    builder_->SetInsertPoint(llFreeBlk);
-    heapObjDestroy(llPtr);
-    builder_->CreateBr(llContBlk);
-
-    // free_decr
-    builder_->SetInsertPoint(llDecrBlk);
-    auto* llNewRefcnt = builder_->CreateSub(llRefcntVal, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1), "h_decr");
-    builder_->CreateStore(llNewRefcnt, llRefcntPtr, "h_st");
-    builder_->CreateBr(llContBlk);
-
-    // free_continue
-    builder_->SetInsertPoint(llContBlk);
+    builder_->CreateCall(globals_.refc_dcr, {llPtr});
 }
 
 void Codegen::heapObjDestroy(llvm::Value* llPtr) {
