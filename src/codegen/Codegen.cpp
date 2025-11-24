@@ -18,6 +18,7 @@ Codegen::Codegen(std::shared_ptr<ast::Ast> ast)
     , builder_(std::make_unique<llvm::IRBuilder<>>(*context_))
     , module_(std::make_unique<llvm::Module>("Module", *context_))
 {
+    blockStack_.reserve(32);
     tmpHeapObjects_.reserve(16);
     globalTys_.integer = llvm::Type::getInt64Ty(*context_);
     globalTys_.real = llvm::Type::getDoubleTy(*context_);
@@ -129,7 +130,7 @@ llvm::Value* Codegen::gen(const ast::Routine& node) {
         builder_->CreateStore(&llParam, llVar);
     }
 
-    codegenBlock(*node.body);
+    codegenBlock(*node.body, true);
 
     if (isMainRoutine_) {
         llvm::APInt llRetValInt(32 /* bitSize */, 0, true /* signed */);
@@ -152,7 +153,7 @@ llvm::Value* Codegen::gen(const ast::Assignment& node) {
     if (globalScope_)
         llvm_unreachable("non-elided at compile-time assignment in global scope is illegal");
 
-    llvm::Value* llLhs = codegenIdRefPtr(*node.left);
+    llvm::Value* llLhs = codegenPrimaryPtr(*node.left);
     llvm::Value* llRhs = node.val->codegen(*this);
 
     if (node.left->type->code == TypeEnum::Int) {
@@ -173,7 +174,7 @@ llvm::Value* Codegen::gen(const ast::Assignment& node) {
             llRhs = builder_->CreateICmpNE(llRhs, llvm::ConstantInt::get(*context_, llvm::APInt(1, 0)), "itob");
         }
     } else if (node.left->type->code == TypeEnum::Array || node.left->type->code == TypeEnum::Record) {
-        heapObjUseCountDecr(llLhs);
+        heapObjUseCountDecr(llLhs, *node.left->type);
         heapObjUseCountInc(llRhs);
     } else
         llvm_unreachable("gen Assignment: unexpected lhs type code");
@@ -219,7 +220,6 @@ llvm::Value* Codegen::gen(const ast::PrintStmt& node) {
 
         // Converting bool to string on output
         if (arg->type->code == TypeEnum::Bool) {
-            llArg->dump();
             llArg = builder_->CreateSelect(llArg, globals_.strTrue, globals_.strFalse, "boolStr");
         }
 
@@ -248,46 +248,60 @@ llvm::Value* Codegen::gen(const ast::ReturnStmt& node) {
         llvm::APInt llRetValInt(32, 0, true);
         builder_->CreateRet(llvm::ConstantInt::get(*context_, llRetValInt));
     } else {
+        llvm::Value* llRetVal;
+        bool isRetValPrimitiveType;
+
         if (node.val) {
-            llvm::Value* llRetVal;
-            bool isPrimitiveType = analyzer::isPrimitiveType(*node.val->type);
-            if (isPrimitiveType) {
+            isRetValPrimitiveType = analyzer::isPrimitiveType(*node.val->type);
+            if (isRetValPrimitiveType) {
                 llRetVal = node.val->codegen(*this);
             } else {
-                if (node.val->code != ExprEnum::IdRef)
-                    llvm_unreachable("gen ReturnStmt: return type is non-primitive but is not an IdRef");
-
                 // Get ptr to heap object, not the object itself
-                llRetVal = codegenIdRefPtr(*node.val);
+                llRetVal = codegenPrimaryPtr(*node.val);
             }
+        }
 
-            // determine whether to increment heap obj count
-            if (!isPrimitiveType) {
-                auto varDecl = static_cast<IdRef&>(*node.val).ref.lock();
-                if (varDecl == nullptr)
-                    llvm_unreachable("gen ReturnStmt: var ref is null");
+        bool hasHeapObjs = false;
+        for (auto it = blockStack_.rbegin(); it != blockStack_.rend(); ++it) {
+            if (!it->heapObjs.empty()
+                // edge-case: if it's the value we return, we don't decrement its refc, and thus we don't need to create the branch
+                && (it != blockStack_.rbegin() || it->heapObjs.size() > 1 || it->heapObjs.back().llPtr != llRetVal)
+            ) {
+                hasHeapObjs = true;
+                break;
+            }
+            if (it->isFunction)
+                break;
+        }
+        if (hasHeapObjs) {
+            // Calling refc_dcr on all objects in the current scope of the function
+            llvm::Function* llParentFn = builder_->GetInsertBlock()->getParent();
+            BasicBlock* llClosingBlk = BasicBlock::Create(*context_, "ret_unfold", llParentFn);
+            builder_->CreateBr(llClosingBlk);
+            builder_->SetInsertPoint(llClosingBlk);
 
-                auto it = vars_.find(varDecl.get());
-                if (it == vars_.end())
-                    llvm_unreachable("gen ReturnStmt: var not in map");
-
-                if (it->second.llParentFn == builder_->GetInsertBlock()->getParent()) {
-                    heapObjUseCountInc(it->second.llVarAllocation);
+            // Call decrement on all heap objects created in this block AND ones above AS LONG AS the blocks belong to this function
+            for (auto it = blockStack_.rbegin(); it != blockStack_.rend(); ++it) {
+                for (auto& heapObj: it->heapObjs) {
+                    // Don't decrement the refc of the object being returned
+                    if (heapObj.llPtr != llRetVal) {
+                        heapObjUseCountDecr(heapObj.llPtr, heapObj.type);
+                    }
                 }
+                if (it->isFunction)
+                    break;
             }
 
-            // TODO
-            if (blockClosingBranch_) {
-                // save ret val, jump to branch
-            } else {
-                builder_->CreateRet(llRetVal);
-            }
+            BasicBlock* llBackBlk = BasicBlock::Create(*context_, "back", llParentFn);
+            builder_->CreateBr(llBackBlk);
+            builder_->SetInsertPoint(llBackBlk);
+        }
+        blockStack_.pop_back();
+
+        if (node.val) {
+            builder_->CreateRet(llRetVal);
         } else {
-            if (blockClosingBranch_) {
-                // TODO jump
-            } else {
-                builder_->CreateRetVoid();
-            }
+            builder_->CreateRetVoid();
         }
     }
     return nullptr;
@@ -550,7 +564,7 @@ llvm::Value* Codegen::gen(const ast::RoutineCall& node) {
         if (routineDecl == nullptr)
             llvm_unreachable("RoutineCall ref is null");
         if (!analyzer::isPrimitiveType(*routineDecl->getType()->retType)) {
-            tmpHeapObjects_.push_back(llCall);
+            tmpHeapObjects_.emplace_back(llCall, *routineDecl->getType()->retType);
         }
     }
 
@@ -709,6 +723,8 @@ void Codegen::setupMainEntryPoint() {
     mainEntryBuilder_->SetInsertPoint(mainBasicBlock);
 
     globals_.main = llFn;
+    blockStack_.push_back({{}, true}); // empty BlockInfo for the main block
+    // global heap objects will be allocated inside main, and thus deallocated at the end of main
 }
 
 void Codegen::genMetaFunctions() {
@@ -802,6 +818,13 @@ void Codegen::genGlobalVars() {
 }
 
 void Codegen::genRoutines() {
+    // auto it = ast_->getRoot()->declMap.find("main");
+    // if (it == ast_->getRoot()->declMap.end())
+    //     llvm_unreachable("no main routine");
+
+    // // gen main first, due to heap allocation
+    // it->second->codegen(*this);
+
     for (auto& u: ast_->getRoot()->units) {
         auto* routine = dynamic_cast<Routine*>(u.get());
         if (routine)
@@ -858,33 +881,58 @@ void Codegen::convertToDouble(llvm::Value*& llVal) {
         llVal = builder_->CreateSIToFP(llVal, globalTys_.real, "itof");
 }
 
-void Codegen::codegenBlock(const ast::Block& node) {
+void Codegen::codegenBlock(const ast::Block& node, bool isFunctionEntry) {
+    llvm::Function *llParentFn = builder_->GetInsertBlock()->getParent();
+    BlockInfo* blockInfo;
+    
+    if (!(isFunctionEntry && isMainRoutine_)) {
+        // Add to the block stack for accounting creation of heap objects
+        blockStack_.push_back({{}, isFunctionEntry});
+    }
+    blockInfo = &blockStack_.back();
+
     for (auto& u: node.units) {
         u->codegen(*this);
 
         // Destroying temporarily-allocated heap objects after a statement has ended
-        for (llvm::Value* llTmpObj: tmpHeapObjects_) {
-            heapObjUseCountDecr(llTmpObj);
+        for (auto& heapObj: tmpHeapObjects_) {
+            heapObjUseCountDecr(heapObj.llPtr, heapObj.type);
+
+            // rm from heapObjs, since the count is already decremented right after the statement
+            auto it = std::find_if(blockInfo->heapObjs.begin(), blockInfo->heapObjs.end(),
+                [&heapObj](HeapObj& obj) { return obj.llPtr == heapObj.llPtr; }
+            );
+            if (it != blockInfo->heapObjs.end())
+                blockInfo->heapObjs.erase(it);
         }
         tmpHeapObjects_.clear();
     }
 
-    for (auto& declIt: node.declMap) {
-        if (!analyzer::isPrimitiveType(*declIt.second->type)) {
-            auto it = vars_.find(declIt.second.get());
-            if (it == vars_.end())
-                llvm_unreachable("codegenBlock: var not found in map");
+    if (llParentFn && !blockInfo->heapObjs.empty()) {
+        llvm::Instruction& last = builder_->GetInsertBlock()->back();
+        if (!llvm::isa<llvm::ReturnInst>(&last)) {
+            BasicBlock* llClosingBlk = BasicBlock::Create(*context_, "close", llParentFn);
+            builder_->CreateBr(llClosingBlk);
+            builder_->SetInsertPoint(llClosingBlk);
 
-            heapObjUseCountDecr(it->second.llVarAllocation);
+            // Call decrement on all heap objects created in this block
+            for (auto& heapObj: blockInfo->heapObjs) {
+                heapObjUseCountDecr(heapObj.llPtr, heapObj.type);
+            }
+
+            BasicBlock* llBackBlk = BasicBlock::Create(*context_, "back", llParentFn);
+            builder_->CreateBr(llBackBlk);
+            builder_->SetInsertPoint(llBackBlk);
+
+            blockStack_.pop_back();
         }
     }
 }
 
 llvm::Value* Codegen::newHeapObject(const ast::Type& type, llvm::Type* llTy, llvm::IRBuilder<>& builder) {
     if (!llTy->isStructTy())
-        llvm_unreachable("newHeapObject: unexpected provided type");
+        llvm_unreachable("newHeapObject: unexpected llTy");
 
-    const ast::RecordType& recordType = static_cast<const RecordType&>(type);
     llvm::StructType* llStructTy = static_cast<llvm::StructType*>(llTy);
 
     const llvm::DataLayout& llDl = module_->getDataLayout();
@@ -911,15 +959,35 @@ llvm::Value* Codegen::newHeapObject(const ast::Type& type, llvm::Type* llTy, llv
     builder.CreateStore(nullInit, llPtr);
 
     // For complex types, recursively heap-allocate and initialize the parent's field with the ptr
-    for (unsigned i = 1; i < elemNum; ++i) {
-        const ast::Type& elemType = *recordType.members[i-1]->type;
-        if (!analyzer::isPrimitiveType(elemType)) {
-            llvm::Type* llElemTy = getType(elemType);
-            llvm::Value* llFieldPtr = newHeapObject(elemType, llElemTy, builder);
-            llvm::Value* llGep = builder.CreateStructGEP(llStructTy, llPtr, i, "field_obj");
-            builder.CreateStore(llFieldPtr, llGep);
+    if (type.code == TypeEnum::Record) {
+        for (unsigned i = 1; i < elemNum; ++i) {
+            const ast::Type& elemType = *static_cast<const RecordType&>(type).members[i-1]->type;
+            if (!analyzer::isPrimitiveType(elemType)) {
+                llvm::Type* llElemTy = getType(elemType);
+                llvm::Value* llFieldPtr = newHeapObject(elemType, llElemTy, builder);
+                llvm::Value* llGep = builder.CreateStructGEP(llStructTy, llPtr, i, "field_obj");
+                builder.CreateStore(llFieldPtr, llGep);
+            }
         }
-    }
+    } else if (type.code == TypeEnum::Array) {
+        const ast::Type& elemType = *static_cast<const ast::ArrayType&>(type).elemType;
+        if (!analyzer::isPrimitiveType(elemType)) {
+            // Allocate all elements immediately
+            // TODO
+            // llvm::Type* llElemTy = getType(elemType);
+            // llvm::Value* llFieldPtr = newHeapObject(elemType, llElemTy, builder);
+            // llvm::Value* llGep = builder.CreateStructGEP(llStructTy, llPtr, i, "elem_obj");
+            // builder.CreateStore(llFieldPtr, llGep);
+        }
+    } else
+        llvm_unreachable("newHeapObject: unexpected type");
+
+    if (blockStack_.empty())
+        llvm_unreachable("newHeapObject called in global scope");
+    auto& blockInfo = blockStack_.back();
+    blockInfo.heapObjs.emplace_back(llPtr, type);
+
+    std::cerr << "NEW OBJ " << llPtr << "\n";
 
     return llPtr;
 }
@@ -928,7 +996,24 @@ void Codegen::heapObjUseCountInc(llvm::Value* llPtr) {
     builder_->CreateCall(globals_.refc_inc, {llPtr});
 }
 
-void Codegen::heapObjUseCountDecr(llvm::Value* llPtr) {
+void Codegen::heapObjUseCountDecr(llvm::Value* llPtr, const ast::Type& type) {
+    if (type.code == TypeEnum::Record) {
+        const auto& members = static_cast<const RecordType&>(type).members;
+        for (size_t i = 0; i < members.size(); ++i) {
+            if (!analyzer::isPrimitiveType(*members[i]->type)) {
+                llvm::Value* llMemberPtr = builder_->CreateStructGEP(globalTys_.heapObj, llPtr, i + 1, "field_obj");
+                builder_->CreateCall(globals_.refc_dcr, {llMemberPtr});
+            }
+        }
+    } else if (type.code == TypeEnum::Array) {
+        const ast::Type& elemType = *static_cast<const ast::ArrayType&>(type).elemType;
+        if (!analyzer::isPrimitiveType(elemType)) {
+            // TODO
+            // Decrement on each element
+        }
+    } else
+        llvm_unreachable("heapObjUseCountDecr: unexpected provided type");
+
     builder_->CreateCall(globals_.refc_dcr, {llPtr});
 }
 
@@ -937,7 +1022,7 @@ void Codegen::heapObjDestroy(llvm::Value* llPtr) {
     builder_->CreateCall(llFreeFn, {llPtr});
 }
 
-llvm::Value* Codegen::codegenIdRefPtr(const ast::Entity& node) {
+llvm::Value* Codegen::codegenPrimaryPtr(const ast::Entity& node) {
     getVarPtr_ = true;
     llvm::Value* llPtr = node.codegen(*this);
     getVarPtr_ = false;

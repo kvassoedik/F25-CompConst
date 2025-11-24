@@ -534,8 +534,10 @@ void Analyzer::validate(Assignment& node) {
         saveError("cannot assign to routine identifier", node.left->span);
         return;
     }
-    if (node.left->code != ExprEnum::IdRef)
-        throw std::runtime_error("internal error: lhs of assignment is not IdRef");
+    if (node.left->code != ExprEnum::IdRef) {
+        saveError("left hand-side of an assignment must be a variable", node.left->span);
+        return;
+    }
 
     IdRef& lhs = static_cast<IdRef&>(*node.left);
     auto decl = lhs.ref.lock();

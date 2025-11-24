@@ -1,0 +1,18 @@
+type MyObj is record var num: integer ; var bool: boolean end
+
+var x: MyObj
+
+routine getTmpObj(): MyObj is
+    var o: MyObj
+    print 100
+    o.num := 17
+    o.bool := true
+    return o
+end
+
+routine main() is
+    var o: MyObj
+    o.num := 18
+    print getTmpObj().bool xor true
+    print getTmpObj().num = o.num*0 + 17 - x.num
+end

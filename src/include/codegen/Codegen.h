@@ -50,13 +50,13 @@ private:
     llvm::Constant* getConstInitializer(const ast::Expr& node);
     llvm::FunctionType* genRoutineType(const ast::RoutineType& node);
     void convertToDouble(llvm::Value*& llVal);
-    void codegenBlock(const ast::Block& node);
+    void codegenBlock(const ast::Block& node, bool isFunctionEntry);
 
     llvm::Value* newHeapObject(const ast::Type& type, llvm::Type* llTy, llvm::IRBuilder<>& builder);
     void heapObjUseCountInc(llvm::Value* llPtr);
-    void heapObjUseCountDecr(llvm::Value* llPtr);
+    void heapObjUseCountDecr(llvm::Value* llPtr, const ast::Type& type);
     void heapObjDestroy(llvm::Value* llPtr);
-    llvm::Value* codegenIdRefPtr(const ast::Entity& node);
+    llvm::Value* codegenPrimaryPtr(const ast::Entity& node);
 private:
     struct VarMapping {
         llvm::Value* llVarAllocation;
@@ -64,7 +64,6 @@ private:
     };
     std::unordered_map<const ast::Decl*, VarMapping> vars_;
     std::unordered_map<std::string, llvm::Type*> typeHashMap_;
-    std::vector<llvm::Value*> tmpHeapObjects_;
     struct {
         llvm::Constant *strTrue, *strFalse;
         llvm::Function *main, *refc_inc, *refc_dcr;
@@ -83,7 +82,19 @@ private:
     llvm::Value* llPrimaryPtr_{nullptr};
     ast::Type* primaryType_;
     llvm::Type* llPrimaryTy_;
-    llvm::BasicBlock* blockClosingBranch_{nullptr}; // if inside a block at least 1 heap object is created, this is created and put at the end of the block
+
+    // if inside a block at least 1 heap object is created, a closing branch is generated and put at the end of the block
+    struct HeapObj {
+        llvm::Value* llPtr;
+        const ast::Type& type;
+    };
+    struct BlockInfo {
+        std::list<HeapObj> heapObjs;
+        bool isFunction;
+    };
+    std::vector<BlockInfo> blockStack_;
+    std::vector<HeapObj> tmpHeapObjects_;
+
     bool globalScope_{true};
     bool isMainRoutine_{false};
     bool getVarPtr_{false};
