@@ -64,6 +64,7 @@ private:
     };
     std::unordered_map<const ast::Decl*, VarMapping> vars_;
     std::unordered_map<std::string, llvm::Type*> typeHashMap_;
+    std::unordered_map<llvm::Type*, llvm::ArrayType*> typeArrayHashMap_;
     struct {
         llvm::Constant *strTrue, *strFalse;
         llvm::Function *main, *refc_inc, *refc_dcr;

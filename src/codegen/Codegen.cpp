@@ -510,30 +510,42 @@ llvm::Value* Codegen::gen(const ast::IdRef& node) {
     if (it == vars_.end())
         llvm_unreachable("Codegen IdRef ref is not yet added to vars map");
 
+    llvm::Value* llVar;
+    if (!it->second.llParentFn) {
+        // is a global var, load first
+        llVar = builder_->CreateLoad(
+            llvm::PointerType::getUnqual(*context_),
+            it->second.llVarAllocation,
+            node.id + "_dref"
+        );
+    } else {
+        llVar = it->second.llVarAllocation;
+    }
+
     llvm::Type* llTy = getType(*varDecl->type); // pointers are opaque, so we need to get the type from AST again
     if (node.next) {
         primaryType_ = varDecl->type.get();
         llPrimaryTy_ = llTy;
 
-        llPrimaryPtr_ = it->second.llVarAllocation;
+        llPrimaryPtr_ = llVar;
         llvm::Value* llDescendantPtr = node.next->codegen(*this);
         llPrimaryPtr_ = nullptr;
-
         if (getVarPtr_) {
             // Get ptr
             return llDescendantPtr;
         }
 
         // Get value
-        llvm::Type* llMemberTy = getType(*primaryType_);
-        llvm::Value* llLoad = builder_->CreateLoad(llMemberTy, llDescendantPtr);
+        std::cerr << static_cast<int>(primaryType_->code) << "\n";
+        llvm::Type* llDescendantTy = getType(*primaryType_);
+        llvm::Value* llLoad = builder_->CreateLoad(llDescendantTy, llDescendantPtr);
         return llLoad;
     }
 
     if (getVarPtr_)
-        return it->second.llVarAllocation;
+        return llVar;
 
-    llvm::Value* llLoad = builder_->CreateLoad(llTy, it->second.llVarAllocation);
+    llvm::Value* llLoad = builder_->CreateLoad(llTy, llVar);
     return llLoad;
 }
 
@@ -574,29 +586,49 @@ llvm::Value* Codegen::gen(const ast::RecordMember& node) {
 
 llvm::Value* Codegen::gen(const ast::ArrayAccess& node) {
     if (llPrimaryPtr_ == nullptr)
-        llvm_unreachable("Codegen ArrayAccess: rogue");
+        llvm_unreachable("gen ArrayAccess: rogue");
     if (primaryType_->code != TypeEnum::Array)
-        llvm_unreachable("Codegen ArrayAccess: parent type is not an array");
+        llvm_unreachable("gen ArrayAccess: parent type is not an array");
+
+    // temporarily setting getVarPtr_ to false so that array index expr retuns us a value, not a ptr
+    bool prevGetVarPtr = getVarPtr_;
+    getVarPtr_ = false;
 
     llvm::Value* llOffset = node.val->codegen(*this);
     if (llOffset == nullptr)
-        llvm_unreachable("Codegen ArrayAccess: val is null");
+        llvm_unreachable("gen ArrayAccess: val is null");
+    if (!llOffset->getType()->isIntegerTy(64))
+        llvm_unreachable("gen ArrayAccess: expr type is not i64");
 
-    // +1 to skip over ref_count 
-    llvm::Value* llRealOffset = builder_->CreateAdd(llOffset, llvm::ConstantInt::get(*context_, llvm::APInt(32, 1)));
+    getVarPtr_ = prevGetVarPtr;
+
+    // truncate to i32
+    llOffset = builder_->CreateTruncOrBitCast(llOffset, llvm::Type::getInt32Ty(*context_));
+
+    primaryType_ = static_cast<ast::ArrayType*>(primaryType_)->elemType.get();
+    // llvm::Value* llArrayPtr = builder_->CreateStructGEP(llPrimaryTy_, llPrimaryPtr_, 1);
+    llvm::Value* llArrayPtr = builder_->CreateGEP(
+        llPrimaryTy_,
+        llPrimaryPtr_,
+        {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0),
+        llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1)}
+    );
+
+    auto it = typeArrayHashMap_.find(llPrimaryTy_);
+    if (it == typeArrayHashMap_.end())
+        llvm_unreachable("gen ArrayAccess: no array type inside hash map");
 
     // Return ptr to this element
-    primaryType_ = node.getType()->elemType.get();
-    llvm::Value* llElemPtr = builder_->CreateGEP(llPrimaryTy_, llPrimaryPtr_,
+    llvm::Value* llElemPtr = builder_->CreateGEP(it->second, llArrayPtr,
         {
-            llvm::ConstantInt::get(*context_, llvm::APInt(32, 0)), // deref ptr to parent obj
-            llRealOffset,
+            llvm::ConstantInt::get(*context_, llvm::APInt(32, 0)), 
+            llOffset,
         }
     );
 
     if (node.next) {
-        llPrimaryPtr_ = llElemPtr;
         llPrimaryTy_ = getType(*primaryType_);
+        llPrimaryPtr_ = llElemPtr;
         return node.next->codegen(*this);
     }
     return llElemPtr;
@@ -675,12 +707,15 @@ llvm::Type* Codegen::genType(const ast::ArrayType& node) {
     llvm::Constant* llSize = getConstInitializer(*node.size);
     int64_t size = static_cast<llvm::ConstantInt*>(llSize)->getSExtValue();
 
+    llvm::ArrayType* llArrayTy = llvm::ArrayType::get(llElemTy, size);
     llvm::Type* llTy = StructType::create({
         // ref_count
         llvm::Type::getInt32Ty(*context_),
         // static array itself
-        llvm::ArrayType::get(llElemTy, size)
+        llArrayTy
     });
+
+    typeArrayHashMap_.emplace(llTy, llArrayTy);
     return llTy;
 }
 

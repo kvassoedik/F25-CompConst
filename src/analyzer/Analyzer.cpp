@@ -541,7 +541,7 @@ void Analyzer::validate(Assignment& node) {
 
     IdRef& lhs = static_cast<IdRef&>(*node.left);
     auto decl = lhs.ref.lock();
-    bool firstTimeUsed = decl &&
+    bool firstTimeUsed = decl && analyzer::isPrimitiveType(*decl->type) &&
         --decl->useCount == 0;
 
     node.val->validate(*this);
