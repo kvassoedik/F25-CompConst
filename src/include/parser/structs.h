@@ -175,7 +175,6 @@ struct IdRef final: public Primary {
     IdRef(const Ast& ast, Tokens::Span span, std::string id)
         : Primary(ast, span), id(std::move(id)) {
             code = ExprEnum::IdRef;
-            isNamed = true;
         }
 
     AST_DEBUGTREE_PRINT_METHOD
