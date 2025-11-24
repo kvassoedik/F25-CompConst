@@ -122,9 +122,8 @@ llvm::Value* Codegen::gen(const ast::Routine& node) {
         const int paramNo = llParam.getArgNo();
         const auto& param = node.getType()->params[paramNo];
 
-        std::string paramName = param->id;
         llvm::Type *llParamTy = llFn->getFunctionType()->getParamType(paramNo);
-        llvm::Value* llVar = builder_->CreateAlloca(llParamTy, nullptr, llvm::Twine(paramName));
+        llvm::Value* llVar = builder_->CreateAlloca(llParamTy, nullptr, param->id);
         vars_.emplace(param.get(), llVar);
 
         builder_->CreateStore(&llParam, llVar);
