@@ -22,7 +22,7 @@ AST_DEBUG_PRINT_METHOD_SIGNATURE override {\
 using namespace ast;
 
 DebugTree::DebugTree()
-    : os_(std::cout)
+    : os_(std::cerr)
 {
     newline_.reserve(32);
     nodes_.reserve(1024);
@@ -35,14 +35,14 @@ void DebugTree::newNode(std::shared_ptr<Entity> node) {
 }
 
 void DebugTree::printAll() {
-    std::cout << ANSI_START ANSI_GREEN ANSI_APPLY << std::string(28, '-') << " AST_DEBUG " << std::string(28, '-') << ANSI_RESET "\n";
+    std::cerr << ANSI_START ANSI_GREEN ANSI_APPLY << std::string(28, '-') << " AST_DEBUG " << std::string(28, '-') << ANSI_RESET "\n";
     for (size_t i = 1; i < nodes_.size(); ++i) {
         while (!depthStack_.empty()) {
             auto top = depthStack_.top();
             depthStack_.pop();
 
             if (top.depth < depth_) {
-                std::cout << ANSI_START ANSI_RED ANSI_APPLY "|\n" ANSI_RESET;
+                std::cerr << ANSI_START ANSI_RED ANSI_APPLY "|\n" ANSI_RESET;
             }
             depth_ = top.depth;
 
@@ -62,7 +62,7 @@ void DebugTree::printAll() {
 
         if (!isCurrOrphan_ && i > 8) {
             isCurrOrphan_ = true;
-            std::cout << "\n" << ANSI_START ANSI_GREEN ANSI_APPLY << std::string(14, '-') << " ORPHAN NODES " << std::string(14, '-') << ANSI_RESET "\n";
+            std::cerr << "\n" << ANSI_START ANSI_GREEN ANSI_APPLY << std::string(14, '-') << " ORPHAN NODES " << std::string(14, '-') << ANSI_RESET "\n";
         }
 
         alreadyDisplayed_.emplace(i);
@@ -88,7 +88,7 @@ void DebugTree::printImpl(const std::shared_ptr<Entity>& node, const std::string
     if (depth_ > 0)
         newline_[0] = '*';
 
-    std::cout << ANSI_START ANSI_RED ANSI_APPLY << newline_ << ANSI_RESET << prefix;
+    std::cerr << ANSI_START ANSI_RED ANSI_APPLY << newline_ << ANSI_RESET << prefix;
     newline_.assign(size, ' ');
     newline_[0] = '\n';
     node->print(*this);
