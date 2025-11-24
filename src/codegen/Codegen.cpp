@@ -272,7 +272,28 @@ llvm::Value* Codegen::gen(const ast::ForStmt& node) {
 }
 
 llvm::Value* Codegen::gen(const ast::WhileStmt& node) {
-    // TODO
+    llvm::Function* llParentFn = builder_->GetInsertBlock()->getParent();
+    llvm::BasicBlock *llLoopBlk = llvm::BasicBlock::Create(*context_, "loop", llParentFn);
+    llvm::BasicBlock *llLoopBodyBlk = llvm::BasicBlock::Create(*context_, "loopbody", llParentFn);
+    llvm::BasicBlock *llBrkBlk = llvm::BasicBlock::Create(*context_, "loopbrk", llParentFn);
+
+    builder_->CreateBr(llLoopBlk);
+    builder_->SetInsertPoint(llLoopBlk);
+
+    llvm::Value* llCond = node.condition->codegen(*this);
+    if (!llCond)
+        llvm_unreachable("gen WhileStmt: cond is null");
+    builder_->CreateCondBr(llCond, llLoopBodyBlk, llBrkBlk);
+
+    builder_->SetInsertPoint(llLoopBodyBlk);
+    codegenBlock(*node.body, false);
+    llvm::Instruction& last = builder_->GetInsertBlock()->back();
+    if (!llvm::isa<llvm::ReturnInst>(&last)) {
+        builder_->CreateBr(llLoopBlk);
+    }
+
+    builder_->SetInsertPoint(llBrkBlk);
+
     return nullptr;
 }
 

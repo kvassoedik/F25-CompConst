@@ -10,11 +10,11 @@ routine main() is
         print 1000
     end
 
-    var y is 0
+    var y is 1
     x := 0
     while x < 2 loop
         while y < 5 loop
-            print y + 10
+            print (y+1) * 10
             y := y + 1
         end
         x := x + 1
@@ -24,7 +24,7 @@ end
 
 /* Output:
 1..10
-10 20 30 40
+20 30 40 50
 1
 2
 */
