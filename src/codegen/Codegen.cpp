@@ -78,21 +78,22 @@ llvm::Value* Codegen::gen(const ast::Var& node) {
             llParentFn->getEntryBlock().begin()
         );
 
+        llvm::AllocaInst* llVar;
         if (analyzer::isPrimitiveType(*node.type)) {
             llvm::Value* llInitializer = node.val->codegen(*this);
-            llvm::AllocaInst* llVar = tmpBuilder.CreateAlloca(llInitializer->getType(), nullptr, node.id);
+            llVar = tmpBuilder.CreateAlloca(llInitializer->getType(), nullptr, node.id);
             builder_->CreateStore(llInitializer, llVar);
-            vars_.emplace(&node, VarMapping{llVar, llParentFn});
-            return llVar;
         } else {
             if (node.type->code != TypeEnum::Array && node.type->code != TypeEnum::Record)
                 llvm_unreachable("gen Var got a non-primitive type that is not Array nor Record");
 
             llvm::Type* llTy = getType(*node.type);
-            llvm::Value* llVar = newHeapObject(*node.type, llTy, *builder_);
-            vars_.emplace(&node, VarMapping{llVar, llParentFn});
-            return llVar;
+            llVar = tmpBuilder.CreateAlloca(llTy->getPointerTo(), nullptr, node.id);
+            llvm::Value* llInitialzer = newHeapObject(*node.type, llTy, *builder_);
+            builder_->CreateStore(llInitialzer, llVar);
         }
+        vars_.emplace(&node, VarMapping{llVar, llParentFn});
+        return llVar;
     }
 }
 
@@ -113,7 +114,6 @@ llvm::Value* Codegen::gen(const ast::Routine& node) {
     } else {
         std::cerr << "gentype\n";
         llvm::FunctionType* llFnTy = genRoutineType(*node.getType());
-        llFnTy->dump();
         llFn = llvm::Function::Create(llFnTy, llvm::Function::ExternalLinkage, node.id, module_.get());
 
         BasicBlock* llEntryBlk = BasicBlock::Create(*context_, "entry", llFn);
@@ -592,7 +592,8 @@ llvm::Value* Codegen::gen(const ast::IdRef& node) {
         primaryType_ = varDecl->type.get();
         llPrimaryTy_ = llTy;
 
-        llPrimaryPtr_ = llVar;
+        llvm::Value* llDerefVar = builder_->CreateLoad(llPrimaryTy_->getPointerTo(), llVar);
+        llPrimaryPtr_ = llDerefVar;
         llvm::Value* llDescendantPtr = node.next->codegen(*this);
         llPrimaryPtr_ = nullptr;
         if (getVarPtr_) {
@@ -603,6 +604,8 @@ llvm::Value* Codegen::gen(const ast::IdRef& node) {
         // Get value
         std::cerr << static_cast<int>(primaryType_->code) << "\n";
         llvm::Type* llDescendantTy = getType(*primaryType_);
+        if (!analyzer::isPrimitiveType(*primaryType_))
+            llDescendantTy = llDescendantTy->getPointerTo();
         llvm::Value* llLoad = builder_->CreateLoad(llDescendantTy, llDescendantPtr);
         return llLoad;
     }
@@ -610,6 +613,8 @@ llvm::Value* Codegen::gen(const ast::IdRef& node) {
     if (getVarPtr_)
         return llVar;
 
+    if (!analyzer::isPrimitiveType(*node.type))
+        llTy = llTy->getPointerTo();
     llvm::Value* llLoad = builder_->CreateLoad(llTy, llVar);
     return llLoad;
 }
@@ -702,25 +707,20 @@ llvm::Value* Codegen::gen(const ast::ArrayAccess& node) {
 llvm::Value* Codegen::gen(const ast::RoutineCall& node) {
     std::vector<llvm::Value*> llArgs;
     llArgs.reserve(node.args.size());
-    
-    bool prevGetVarPtr = getVarPtr_;
-    getVarPtr_ = true;
 
     for (auto& arg: node.args) {
         llvm::Value* llArg = arg->codegen(*this);
-        std::cerr << "ARG:\n";
-        llArg->dump();
-        llArg->getType()->dump();
+        // std::cerr << "ARG:\n";
+        // llArg->dump();
+        // llArg->getType()->dump();
         llArgs.push_back(llArg);
     }
-    getVarPtr_ = prevGetVarPtr;
 
     llvm::Function* llFn = module_->getFunction(node.routineId);
     if (!llFn)
         llvm_unreachable("gen RoutineCall: no function found");
 
     std::cerr << "CALLING\n";
-    llFn->getType()->dump();
     llvm::Value* llCall = builder_->CreateCall(llFn, llArgs);
     std::cerr << "Call happened\n";
     // If the expr is not set to a variable and it returns a heap object, defer its deletion to the end of the unit in Block
@@ -837,7 +837,6 @@ llvm::Type* Codegen::getType(const ast::Type& node) {
     llvm::Type* llTy = node.codegenType(*this);
     typeHashMap_.emplace(std::move(ss).str(), llTy);
     std::cerr<<"done" << llTy << "\n";
-    llTy->dump();
     std::cerr << "returning type\n";
     return llTy;
 }

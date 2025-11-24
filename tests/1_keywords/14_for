@@ -1,8 +1,11 @@
+
 routine foo(arr: array[] boolean, a: integer) is
-    arr[5] := true
+    print arr[a]
+    arr[a] := true
 end
 
 routine main() is
+/*
     for x in 0..9 loop
         print x + 1
     end
@@ -10,7 +13,8 @@ routine main() is
     for x in 0..9 reverse loop
         print x + 1
     end
-
+*/
+/*
     var a: array[3] integer
 
     for i in a loop
@@ -22,9 +26,12 @@ routine main() is
     for i in a reverse loop
         print a[i]
     end
-
+*/
     var b: array[4] boolean
     foo(b, 1)
+    print b[0]
+    print b[1]
+    print b[2]
 end
 
 /* Output:
