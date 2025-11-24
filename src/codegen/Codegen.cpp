@@ -232,14 +232,17 @@ llvm::Value* Codegen::gen(const ast::PrintStmt& node) {
 }
 
 llvm::Value* Codegen::gen(const ast::IfStmt& node) {
+    // TODO
     return nullptr;
 }
 
 llvm::Value* Codegen::gen(const ast::ForStmt& node) {
+    // TODO
     return nullptr;
 }
 
 llvm::Value* Codegen::gen(const ast::WhileStmt& node) {
+    // TODO
     return nullptr;
 }
 
@@ -486,8 +489,12 @@ llvm::Value* Codegen::gen(const ast::IdRef& node) {
 llvm::Value* Codegen::gen(const ast::RecordMember& node) {
     if (llPrimaryPtr_ == nullptr)
         llvm_unreachable("Codegen RecordMember: rogue");
-    if (primaryType_->code != TypeEnum::Record)
+    if (primaryType_->code != TypeEnum::Record) {
+        if (primaryType_->code == TypeEnum::Array && node.id == "size") {
+            // TODO
+        }
         llvm_unreachable("Codegen RecordMember: parent type is not a record");
+    }
 
     auto& members = static_cast<RecordType*>(primaryType_)->members;
     size_t offset = 0;
