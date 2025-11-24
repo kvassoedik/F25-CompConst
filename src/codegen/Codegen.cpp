@@ -232,7 +232,37 @@ llvm::Value* Codegen::gen(const ast::PrintStmt& node) {
 }
 
 llvm::Value* Codegen::gen(const ast::IfStmt& node) {
-    // TODO
+    llvm::Value* llCond = node.condition->codegen(*this);
+    if (!llCond)
+        llvm_unreachable("gen IfStmt: cond is null");
+
+    llvm::Function* llParentFn = builder_->GetInsertBlock()->getParent();
+    llvm::BasicBlock *llThenBlk = llvm::BasicBlock::Create(*context_, "then", llParentFn);
+    llvm::BasicBlock *llElseBlk = node.elseBody
+        ? llvm::BasicBlock::Create(*context_, "else", llParentFn)
+        : nullptr;
+    llvm::BasicBlock *llContBlk = llvm::BasicBlock::Create(*context_, "ifcont", llParentFn);
+
+    builder_->CreateCondBr(llCond, llThenBlk, llElseBlk ? llElseBlk : llContBlk);
+
+    builder_->SetInsertPoint(llThenBlk);
+    codegenBlock(*node.body, false);
+    llvm::Instruction& last = builder_->GetInsertBlock()->back();
+    if (!llvm::isa<llvm::ReturnInst>(&last)) {
+        builder_->CreateBr(llContBlk);
+    }
+
+    if (llElseBlk) {
+        builder_->SetInsertPoint(llElseBlk);
+        codegenBlock(*node.elseBody, false);
+        llvm::Instruction& last = builder_->GetInsertBlock()->back();
+        if (!llvm::isa<llvm::ReturnInst>(&last)) {
+            builder_->CreateBr(llContBlk);
+        }
+    }
+
+    builder_->SetInsertPoint(llContBlk);
+
     return nullptr;
 }
 
@@ -897,10 +927,10 @@ void Codegen::codegenBlock(const ast::Block& node, bool isFunctionEntry) {
         blockStack_.push_back({{}, isFunctionEntry});
     }
     blockInfo = &blockStack_.back();
-
+    std::cerr << "new Block\n";
     for (auto& u: node.units) {
+        std::cerr << "unit\n";
         u->codegen(*this);
-
         // Destroying temporarily-allocated heap objects after a statement has ended
         for (auto& heapObj: tmpHeapObjects_) {
             heapObjUseCountDecr(heapObj.llPtr, heapObj.type);
@@ -915,7 +945,7 @@ void Codegen::codegenBlock(const ast::Block& node, bool isFunctionEntry) {
         tmpHeapObjects_.clear();
     }
 
-    if (llParentFn && !blockInfo->heapObjs.empty()) {
+    if (!blockInfo->heapObjs.empty()) {
         llvm::Instruction& last = builder_->GetInsertBlock()->back();
         if (!llvm::isa<llvm::ReturnInst>(&last)) {
             BasicBlock* llClosingBlk = BasicBlock::Create(*context_, "close", llParentFn);
@@ -930,10 +960,10 @@ void Codegen::codegenBlock(const ast::Block& node, bool isFunctionEntry) {
             BasicBlock* llBackBlk = BasicBlock::Create(*context_, "back", llParentFn);
             builder_->CreateBr(llBackBlk);
             builder_->SetInsertPoint(llBackBlk);
-
-            blockStack_.pop_back();
         }
     }
+
+    blockStack_.pop_back();
 }
 
 llvm::Value* Codegen::newHeapObject(const ast::Type& type, llvm::Type* llTy, llvm::IRBuilder<>& builder) {
