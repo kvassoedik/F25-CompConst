@@ -101,7 +101,7 @@ llvm::Value* Codegen::gen(const ast::Routine& node) {
         llvm_unreachable("gen Routine got a routine with no body");
 
     isMainRoutine_ = (node.id == "main");
-
+    std::cerr << "routine\n";
     Function* llFn;
     if (isMainRoutine_) {
         llFn = globals_.main;
@@ -111,20 +111,25 @@ llvm::Value* Codegen::gen(const ast::Routine& node) {
         // Add new instructions after the mainEntryBuilder_ position
         builder_->SetInsertPoint(llStartBlk);
     } else {
+        std::cerr << "gentype\n";
         llvm::FunctionType* llFnTy = genRoutineType(*node.getType());
+        llFnTy->dump();
         llFn = llvm::Function::Create(llFnTy, llvm::Function::ExternalLinkage, node.id, module_.get());
 
         BasicBlock* llEntryBlk = BasicBlock::Create(*context_, "entry", llFn);
         builder_->SetInsertPoint(llEntryBlk);
     }
-
+    std::cerr << "parameteres\n";
     for (auto& llParam : llFn->args()) {
         const int paramNo = llParam.getArgNo();
         const auto& param = node.getType()->params[paramNo];
 
         llvm::Type *llParamTy = llFn->getFunctionType()->getParamType(paramNo);
+        if (!analyzer::isPrimitiveType(*param->type))
+            llParamTy = llParamTy->getPointerTo();
+        std::cerr << "param\n";
         llvm::Value* llVar = builder_->CreateAlloca(llParamTy, nullptr, param->id);
-        vars_.emplace(param.get(), llVar);
+        vars_.emplace(param.get(), VarMapping{llVar, llFn});
 
         builder_->CreateStore(&llParam, llVar);
     }
@@ -266,7 +271,68 @@ llvm::Value* Codegen::gen(const ast::IfStmt& node) {
 }
 
 llvm::Value* Codegen::gen(const ast::ForStmt& node) {
-    // TODO
+    std::cerr << "for stmt\n";
+    llvm::Function* llParentFn = builder_->GetInsertBlock()->getParent();
+    llvm::BasicBlock *llLoopInitBlk = llvm::BasicBlock::Create(*context_, "loopinit", llParentFn);
+    llvm::BasicBlock *llLoopBlk = llvm::BasicBlock::Create(*context_, "loop", llParentFn);
+    llvm::BasicBlock *llLoopBodyBlk = llvm::BasicBlock::Create(*context_, "loopbody", llParentFn);
+    llvm::BasicBlock *llBrkBlk = llvm::BasicBlock::Create(*context_, "loopbrk", llParentFn);
+
+    llvm::Value *llStart, *llEnd;
+    auto* intRange = dynamic_cast<IntRange*>(node.range.get());
+    if (intRange) {
+        llStart = intRange->start->codegen(*this);
+        llEnd = intRange->end->codegen(*this);
+    } else {
+        auto* arrayIdRange = dynamic_cast<ArrayIdRange*>(node.range.get());
+        if (!arrayIdRange)
+            llvm_unreachable("gen ForStmt: unexpected range");
+        llStart = llvm::ConstantInt::get(globalTys_.integer, 0);
+        llEnd = nullptr; // TODO
+    }
+
+    llvm::Value* llCond;
+    if (node.reverse) {
+        llCond = builder_->CreateICmpSGE(llEnd, llStart, "reverse_for_ck");
+    } else {
+        llCond = builder_->CreateICmpSLE(llStart, llEnd, "for_ck");
+    }
+    builder_->CreateCondBr(llCond, llLoopInitBlk, llBrkBlk);
+
+    builder_->SetInsertPoint(llLoopInitBlk);
+    std::cerr << "create alloca\n";
+    llvm::Value* llVar = builder_->CreateAlloca(globalTys_.integer, nullptr, node.counter->id);
+    vars_.emplace(node.counter.get(), VarMapping{llVar, llParentFn});
+
+    if (node.reverse)
+        builder_->CreateStore(llEnd, llVar);
+    else
+        builder_->CreateStore(llStart, llVar);
+    std::cerr << "init done\n";
+    builder_->CreateBr(llLoopBodyBlk);
+
+    builder_->SetInsertPoint(llLoopBlk);
+    llvm::Value* llCntVal = builder_->CreateLoad(globalTys_.integer, llVar, "for_cnt");
+    if (node.reverse) {
+        llvm::Value* llStep = builder_->CreateSub(llCntVal, llvm::ConstantInt::get(globalTys_.integer, 1));
+        builder_->CreateStore(llStep, llVar, "for_step");
+        llCond = builder_->CreateICmpSGE(llStep, llStart, "reverse_for_ck");
+    } else {
+        llvm::Value* llStep = builder_->CreateAdd(llCntVal, llvm::ConstantInt::get(globalTys_.integer, 1));
+        builder_->CreateStore(llStep, llVar, "for_step");
+        llCond = builder_->CreateICmpSLE(llStep, llEnd, "for_ck");
+    }
+    builder_->CreateCondBr(llCond, llLoopBodyBlk, llBrkBlk);
+
+    builder_->SetInsertPoint(llLoopBodyBlk);
+    codegenBlock(*node.body, false);
+    llvm::Instruction& last = builder_->GetInsertBlock()->back();
+    if (!llvm::isa<llvm::ReturnInst>(&last)) {
+        builder_->CreateBr(llLoopBlk);
+    }
+
+    builder_->SetInsertPoint(llBrkBlk);
+
     return nullptr;
 }
 
@@ -636,27 +702,41 @@ llvm::Value* Codegen::gen(const ast::ArrayAccess& node) {
 llvm::Value* Codegen::gen(const ast::RoutineCall& node) {
     std::vector<llvm::Value*> llArgs;
     llArgs.reserve(node.args.size());
+    
+    bool prevGetVarPtr = getVarPtr_;
+    getVarPtr_ = true;
+
     for (auto& arg: node.args) {
         llvm::Value* llArg = arg->codegen(*this);
+        std::cerr << "ARG:\n";
+        llArg->dump();
+        llArg->getType()->dump();
         llArgs.push_back(llArg);
     }
+    getVarPtr_ = prevGetVarPtr;
 
     llvm::Function* llFn = module_->getFunction(node.routineId);
     if (!llFn)
         llvm_unreachable("gen RoutineCall: no function found");
 
+    std::cerr << "CALLING\n";
+    llFn->getType()->dump();
     llvm::Value* llCall = builder_->CreateCall(llFn, llArgs);
-    
+    std::cerr << "Call happened\n";
     // If the expr is not set to a variable and it returns a heap object, defer its deletion to the end of the unit in Block
     if (!node.isNamed) {
         auto routineDecl = node.ref.lock();
         if (routineDecl == nullptr)
             llvm_unreachable("RoutineCall ref is null");
-        if (!analyzer::isPrimitiveType(*routineDecl->getType()->retType)) {
+
+        const auto& retType = routineDecl->getType()->retType;
+        if (retType && !analyzer::isPrimitiveType(*retType)) {
+            std::cerr << "emp;\n";
             tmpHeapObjects_.emplace_back(llCall, *routineDecl->getType()->retType);
         }
+        std::cerr << "nexte\n";
     }
-
+    std::cerr << "after tmps\n";
     if (node.next) {
         auto routineDecl = node.ref.lock();
         if (routineDecl == nullptr)
@@ -679,7 +759,7 @@ llvm::Value* Codegen::gen(const ast::RoutineCall& node) {
         llvm::Value* llLoad = builder_->CreateLoad(llMemberTy, llDescendantPtr);
         return llLoad;
     }
-
+    std::cerr << "Call return\n";
     return llCall;
 }
 
@@ -703,9 +783,14 @@ llvm::Type* Codegen::genType(const ast::ArrayType& node) {
         llElemTy = llElemTy->getPointerTo();
     }
 
-    llvm::Constant* llSize = getConstInitializer(*node.size);
-    int64_t size = static_cast<llvm::ConstantInt*>(llSize)->getSExtValue();
-
+    int64_t size;
+    if (node.size) {
+        llvm::Constant* llSize = getConstInitializer(*node.size);
+        size = static_cast<llvm::ConstantInt*>(llSize)->getSExtValue();
+    } else {
+        size = 0;
+    }
+    std::cerr << "arr type\n";
     llvm::ArrayType* llArrayTy = llvm::ArrayType::get(llElemTy, size);
     llvm::Type* llTy = StructType::create({
         // ref_count
@@ -713,7 +798,7 @@ llvm::Type* Codegen::genType(const ast::ArrayType& node) {
         // static array itself
         llArrayTy
     });
-
+    std::cerr << "emplace\n";
     typeArrayHashMap_.emplace(llTy, llArrayTy);
     return llTy;
 }
@@ -741,15 +826,19 @@ llvm::Type* Codegen::genType(const ast::RecordType& node) {
 // Reusing type string hashes to reuse previously created llvm::Type's
 llvm::Type* Codegen::getType(const ast::Type& node) {
     std::stringstream ss;
+    std::cerr << "serialze\n";
     node.serializeType({.os = ss, .ir = true});
-
+    std::cerr << "got\n";
     auto typeIt = typeHashMap_.find(ss.str());
     if (typeIt != typeHashMap_.end()) {
         return typeIt->second;
     }
-
+    std::cerr<<"codegenType\n";
     llvm::Type* llTy = node.codegenType(*this);
     typeHashMap_.emplace(std::move(ss).str(), llTy);
+    std::cerr<<"done" << llTy << "\n";
+    llTy->dump();
+    std::cerr << "returning type\n";
     return llTy;
 }
 
@@ -910,13 +999,6 @@ void Codegen::genGlobalVars() {
 }
 
 void Codegen::genRoutines() {
-    // auto it = ast_->getRoot()->declMap.find("main");
-    // if (it == ast_->getRoot()->declMap.end())
-    //     llvm_unreachable("no main routine");
-
-    // // gen main first, due to heap allocation
-    // it->second->codegen(*this);
-
     for (auto& u: ast_->getRoot()->units) {
         auto* routine = dynamic_cast<Routine*>(u.get());
         if (routine)
@@ -950,12 +1032,19 @@ llvm::Constant* Codegen::getConstInitializer(const ast::Expr& node) {
 }
 
 llvm::FunctionType* Codegen::genRoutineType(const ast::RoutineType& node) {
-    std::vector<llvm::Type*> llParamTy(node.params.size());
-    for (auto &param : node.params)
-        llParamTy.push_back(
-            getType(*param->type)
-        );
+    std::vector<llvm::Type*> llParamTy;
+    llParamTy.reserve(node.params.size());
 
+    for (auto &param : node.params) {
+        std::cerr << "get param ty\n";
+        llvm::Type* llTy = getType(*param->type);
+        std::cerr << "GOT?\n";
+        if (!analyzer::isPrimitiveType(*param->type))
+            llTy = llTy->getPointerTo();
+        std::cerr << "param type\n";
+        llParamTy.push_back(llTy);
+    }
+    std::cerr << "gen ret yt\n";
     llvm::Type *llRetTy;
     if (node.retType) {
         llRetTy = node.retType->codegenType(*this);
@@ -965,6 +1054,7 @@ llvm::FunctionType* Codegen::genRoutineType(const ast::RoutineType& node) {
     } else {
         llRetTy = llvm::Type::getVoidTy(*context_);
     }
+    std::cerr << "gened routine type\n";
     return llvm::FunctionType::get(llRetTy, llParamTy, false /* isVarArgs */);
 }
 
