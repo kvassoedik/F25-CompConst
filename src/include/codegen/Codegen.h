@@ -71,7 +71,7 @@ private:
     } globals_;
     struct {
         llvm::Type *real, *integer;
-        llvm::StructType *heapObj;
+        llvm::StructType *heapObj, *heapArrayObj;
     } globalTys_;
 
     std::shared_ptr<ast::Ast> ast_;

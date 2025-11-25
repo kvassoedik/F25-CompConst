@@ -25,6 +25,10 @@ Codegen::Codegen(std::shared_ptr<ast::Ast> ast)
     globalTys_.heapObj = llvm::StructType::create(*context_, {
         llvm::Type::getInt32Ty(*context_) /* ref_count */
     }, "heap_obj");
+    globalTys_.heapArrayObj = llvm::StructType::create(*context_, {
+        llvm::Type::getInt32Ty(*context_) /* ref_count */,
+        llvm::Type::getInt32Ty(*context_) /* fixed size */
+    }, "arr_obj");
 }
 
 int Codegen::configure(int* argc, char** argv) {
@@ -67,6 +71,11 @@ llvm::Value* Codegen::gen(const ast::Var& node) {
 
             llvm::Value* llPtr = newHeapObject(*node.type, llTy, *mainEntryBuilder_);
             mainEntryBuilder_->CreateStore(llPtr, llGlobalVar);
+
+            if (blockStack_.empty())
+                llvm_unreachable("no blockStack entries (globalVar)");
+            auto& blockInfo = blockStack_.back();
+            blockInfo.heapObjs.emplace_back(llGlobalVar, *node.type);
         }
 
         vars_.emplace(&node, VarMapping{llGlobalVar, nullptr});
@@ -89,8 +98,20 @@ llvm::Value* Codegen::gen(const ast::Var& node) {
 
             llvm::Type* llTy = getType(*node.type);
             llVar = tmpBuilder.CreateAlloca(llTy->getPointerTo(), nullptr, node.id);
-            llvm::Value* llInitialzer = newHeapObject(*node.type, llTy, *builder_);
+
+            llvm::Value* llInitialzer;
+            if (node.val) {
+                llInitialzer = node.val->codegen(*this);
+                heapObjUseCountInc(llInitialzer);
+            } else {
+                llInitialzer = newHeapObject(*node.type, llTy, *builder_);
+            }
             builder_->CreateStore(llInitialzer, llVar);
+
+            if (blockStack_.empty())
+                llvm_unreachable("no blockStack entries (localVar)");
+            auto& blockInfo = blockStack_.back();
+            blockInfo.heapObjs.emplace_back(llVar, *node.type);
         }
         vars_.emplace(&node, VarMapping{llVar, llParentFn});
         return llVar;
@@ -157,7 +178,7 @@ llvm::Value* Codegen::gen(const ast::Assignment& node) {
     if (globalScope_)
         llvm_unreachable("non-elided at compile-time assignment in global scope is illegal");
 
-    llvm::Value* llLhs = codegenPrimaryPtr(*node.left);
+    llvm::Value* llLhsPtr = codegenPrimaryPtr(*node.left);
     llvm::Value* llRhs = node.val->codegen(*this);
 
     if (node.left->type->code == TypeEnum::Int) {
@@ -178,12 +199,13 @@ llvm::Value* Codegen::gen(const ast::Assignment& node) {
             llRhs = builder_->CreateICmpNE(llRhs, llvm::ConstantInt::get(*context_, llvm::APInt(1, 0)), "itob");
         }
     } else if (node.left->type->code == TypeEnum::Array || node.left->type->code == TypeEnum::Record) {
-        heapObjUseCountDecr(llLhs, *node.left->type);
+        llvm::Value* llDeref = builder_->CreateLoad(globalTys_.heapObj->getPointerTo(), llLhsPtr);
+        heapObjUseCountDecr(llDeref, *node.left->type);
         heapObjUseCountInc(llRhs);
     } else
         llvm_unreachable("gen Assignment: unexpected lhs type code");
 
-    builder_->CreateStore(llRhs, llLhs);
+    builder_->CreateStore(llRhs, llLhsPtr);
 
     return nullptr;
 }
@@ -288,7 +310,21 @@ llvm::Value* Codegen::gen(const ast::ForStmt& node) {
         if (!arrayIdRange)
             llvm_unreachable("gen ForStmt: unexpected range");
         llStart = llvm::ConstantInt::get(globalTys_.integer, 0);
-        llEnd = nullptr; // TODO
+
+        // load array size RTTI
+        auto varDecl = arrayIdRange->ref.lock();
+        if (!varDecl)
+            llvm_unreachable("gen ForStmt: ArrayIdRange ref is null");
+        
+        auto it = vars_.find(varDecl.get());
+        if (it == vars_.end())
+            llvm_unreachable("gen ForStmt: ArrayIdRange decl not in map");
+
+        llvm::Value* llDeref = builder_->CreateLoad(globalTys_.heapArrayObj->getPointerTo(), it->second.llVarAllocation);
+        llvm::Value* llSizeRttiPtr = builder_->CreateStructGEP(globalTys_.heapArrayObj, llDeref, 1);
+        llEnd = builder_->CreateLoad(llvm::Type::getInt32Ty(*context_), llSizeRttiPtr);
+        llEnd = builder_->CreateSExt(llEnd, globalTys_.integer);
+        llEnd = builder_->CreateSub(llEnd, llvm::ConstantInt::get(globalTys_.integer, 1));
     }
 
     llvm::Value* llCond;
@@ -375,7 +411,7 @@ llvm::Value* Codegen::gen(const ast::ReturnStmt& node) {
             if (isRetValPrimitiveType) {
                 llRetVal = node.val->codegen(*this);
             } else {
-                // Get ptr to heap object, not the object itself
+                // Get ptr to heap object, not the object itself to compare to heapObjs.llPtr
                 llRetVal = codegenPrimaryPtr(*node.val);
             }
         }
@@ -404,7 +440,8 @@ llvm::Value* Codegen::gen(const ast::ReturnStmt& node) {
                 for (auto& heapObj: it->heapObjs) {
                     // Don't decrement the refc of the object being returned
                     if (heapObj.llPtr != llRetVal) {
-                        heapObjUseCountDecr(heapObj.llPtr, heapObj.type);
+                        llvm::Value* llDeref = builder_->CreateLoad(globalTys_.heapObj->getPointerTo(), heapObj.llPtr);
+                        heapObjUseCountDecr(llDeref, heapObj.type);
                     }
                 }
                 if (it->isFunction)
@@ -418,6 +455,10 @@ llvm::Value* Codegen::gen(const ast::ReturnStmt& node) {
         blockStack_.pop_back();
 
         if (node.val) {
+            if (!isRetValPrimitiveType) {
+                llvm::Type* llRetTy = getType(*node.val->type)->getPointerTo();
+                llRetVal = builder_->CreateLoad(llRetTy, llRetVal);
+            }
             builder_->CreateRet(llRetVal);
         } else {
             builder_->CreateRetVoid();
@@ -575,17 +616,18 @@ llvm::Value* Codegen::gen(const ast::IdRef& node) {
     if (it == vars_.end())
         llvm_unreachable("Codegen IdRef ref is not yet added to vars map");
 
-    llvm::Value* llVar;
-    if (!it->second.llParentFn) {
-        // is a global var, load first
-        llVar = builder_->CreateLoad(
-            llvm::PointerType::getUnqual(*context_),
-            it->second.llVarAllocation,
-            node.id + "_dref"
-        );
-    } else {
-        llVar = it->second.llVarAllocation;
-    }
+    llvm::Value* llVar = it->second.llVarAllocation;
+    // llvm::Value* llVar;
+    // if (!it->second.llParentFn) {
+    //     // is a global var, load first
+    //     llVar = builder_->CreateLoad(
+    //         llvm::PointerType::getUnqual(*context_),
+    //         it->second.llVarAllocation,
+    //         node.id + "_dref"
+    //     );
+    // } else {
+        
+    // }
 
     llvm::Type* llTy = getType(*varDecl->type); // pointers are opaque, so we need to get the type from AST again
     if (node.next) {
@@ -631,9 +673,10 @@ llvm::Value* Codegen::gen(const ast::RecordMember& node) {
 
     auto& members = static_cast<RecordType*>(primaryType_)->members;
     size_t offset = 0;
+    ast::Type* fieldType;
     for (auto& mem: members) {
         if (mem->id == node.id) {
-            primaryType_ = mem->type.get();
+            fieldType = mem->type.get();
             break;
         }
         offset++;
@@ -646,6 +689,7 @@ llvm::Value* Codegen::gen(const ast::RecordMember& node) {
     llvm::Value* llFieldPtr = builder_->CreateStructGEP(llPrimaryTy_, llPrimaryPtr_,
         offset + 1 /* +1 to skip over ref_count */);
 
+    primaryType_ = fieldType;
     if (node.next) {
         llPrimaryPtr_ = llFieldPtr;
         llPrimaryTy_ = getType(*primaryType_);
@@ -676,12 +720,8 @@ llvm::Value* Codegen::gen(const ast::ArrayAccess& node) {
     llOffset = builder_->CreateTruncOrBitCast(llOffset, llvm::Type::getInt32Ty(*context_));
 
     primaryType_ = static_cast<ast::ArrayType*>(primaryType_)->elemType.get();
-    // llvm::Value* llArrayPtr = builder_->CreateStructGEP(llPrimaryTy_, llPrimaryPtr_, 1);
-    llvm::Value* llArrayPtr = builder_->CreateGEP(
-        llPrimaryTy_,
-        llPrimaryPtr_,
-        {llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0),
-        llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1)}
+    llvm::Value* llArrayPtr = builder_->CreateStructGEP(llPrimaryTy_, llPrimaryPtr_,
+        2 /* skip over meta info */
     );
 
     auto it = typeArrayHashMap_.find(llPrimaryTy_);
@@ -710,9 +750,9 @@ llvm::Value* Codegen::gen(const ast::RoutineCall& node) {
 
     for (auto& arg: node.args) {
         llvm::Value* llArg = arg->codegen(*this);
-        // std::cerr << "ARG:\n";
-        // llArg->dump();
-        // llArg->getType()->dump();
+        if (!analyzer::isPrimitiveType(*arg->type)) {
+            heapObjUseCountInc(llArg);
+        }
         llArgs.push_back(llArg);
     }
 
@@ -794,6 +834,8 @@ llvm::Type* Codegen::genType(const ast::ArrayType& node) {
     llvm::ArrayType* llArrayTy = llvm::ArrayType::get(llElemTy, size);
     llvm::Type* llTy = StructType::create({
         // ref_count
+        llvm::Type::getInt32Ty(*context_),
+        // fixed size for RTTI
         llvm::Type::getInt32Ty(*context_),
         // static array itself
         llArrayTy
@@ -950,11 +992,7 @@ void Codegen::genMetaFunctions() {
         builder_->SetInsertPoint(llEntryBlk);
 
         // Implementation
-        // llvm::Type *llParamTy = llFnTy->getParamType(0);
-        // llvm::Value* llVar = builder_->CreateAlloca(llParamTy, nullptr, "objptr");
         llvm::Argument* llPtr = llFn->getArg(0);
-        // builder_->CreateStore(llParam, llVar);
-
         llvm::Value* llRefcntPtr = builder_->CreateStructGEP(
             globalTys_.heapObj,
             llPtr, 0
@@ -1098,13 +1136,15 @@ void Codegen::codegenBlock(const ast::Block& node, bool isFunctionEntry) {
 
             // Call decrement on all heap objects created in this block
             for (auto& heapObj: blockInfo->heapObjs) {
-                heapObjUseCountDecr(heapObj.llPtr, heapObj.type);
+                llvm::Value* llDeref = builder_->CreateLoad(globalTys_.heapObj->getPointerTo(), heapObj.llPtr);
+                heapObjUseCountDecr(llDeref, heapObj.type);
             }
 
             BasicBlock* llBackBlk = BasicBlock::Create(*context_, "back", llParentFn);
             builder_->CreateBr(llBackBlk);
             builder_->SetInsertPoint(llBackBlk);
-        }
+        } else
+            return;
     }
 
     blockStack_.pop_back();
@@ -1130,8 +1170,22 @@ llvm::Value* Codegen::newHeapObject(const ast::Type& type, llvm::Type* llTy, llv
 
     // ref_count init to 1
     llInitFields.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1));
+
+    unsigned rest_offset;
+    if (type.code == TypeEnum::Array) {
+        rest_offset = 2;
+
+        auto it = typeArrayHashMap_.find(llTy);
+        if (it == typeArrayHashMap_.end())
+            llvm_unreachable("newHeapObject: no array type found in map");
+
+        // fixed size init
+        llInitFields.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), it->second->getNumElements()));
+    } else {
+        rest_offset = 1;
+    }
     // Initialize the rest
-    for (unsigned i = 1; i < elemNum; ++i) {
+    for (unsigned i = rest_offset; i < elemNum; ++i) {
         llvm::Type* llElemTy = llStructTy->getElementType(i);
         llInitFields.push_back(llvm::Constant::getNullValue(llElemTy));
     }
@@ -1163,11 +1217,6 @@ llvm::Value* Codegen::newHeapObject(const ast::Type& type, llvm::Type* llTy, llv
     } else
         llvm_unreachable("newHeapObject: unexpected type");
 
-    if (blockStack_.empty())
-        llvm_unreachable("newHeapObject called in global scope");
-    auto& blockInfo = blockStack_.back();
-    blockInfo.heapObjs.emplace_back(llPtr, type);
-
     std::cerr << "NEW OBJ " << llPtr << "\n";
 
     return llPtr;
@@ -1181,9 +1230,12 @@ void Codegen::heapObjUseCountDecr(llvm::Value* llPtr, const ast::Type& type) {
     if (type.code == TypeEnum::Record) {
         const auto& members = static_cast<const RecordType&>(type).members;
         for (size_t i = 0; i < members.size(); ++i) {
-            if (!analyzer::isPrimitiveType(*members[i]->type)) {
-                llvm::Value* llMemberPtr = builder_->CreateStructGEP(globalTys_.heapObj, llPtr, i + 1, "field_obj");
-                builder_->CreateCall(globals_.refc_dcr, {llMemberPtr});
+            const auto& type = *members[i]->type;
+            if (!analyzer::isPrimitiveType(type)) {
+                llvm::Type* llTy = getType(type);
+                llvm::Value* llMemberPtr = builder_->CreateStructGEP(llTy, llPtr, i + 1, "field_obj");
+                llvm::Value* llDeref = builder_->CreateLoad(globalTys_.heapObj->getPointerTo(), llMemberPtr);
+                heapObjUseCountDecr(llDeref, type);
             }
         }
     } else if (type.code == TypeEnum::Array) {
