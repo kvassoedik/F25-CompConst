@@ -157,16 +157,16 @@ llvm::Value* Codegen::gen(const ast::Routine& node) {
 
     codegenBlock(*node.body, true);
     std::cerr<<"block genned\n";
-    if (isMainRoutine_) {
-        llvm::Instruction* last = !builder_->GetInsertBlock()->empty()
-            ? &builder_->GetInsertBlock()->back()
-            : nullptr;
-        if (!last || !llvm::isa<llvm::ReturnInst>(last)) {
+    llvm::Instruction* last = !builder_->GetInsertBlock()->empty()
+        ? &builder_->GetInsertBlock()->back()
+        : nullptr;
+    if (!last || !llvm::isa<llvm::ReturnInst>(last)) {
+        if (isMainRoutine_) {
             llvm::APInt llRetValInt(32 /* bitSize */, 0, true /* signed */);
             builder_->CreateRet(llvm::ConstantInt::get(*context_, llRetValInt));
+        } else if (llFn->getReturnType()->isVoidTy()) {
+            builder_->CreateRetVoid();
         }
-    } else if (llFn->getReturnType()->isVoidTy()) {
-        builder_->CreateRetVoid();
     }
     isMainRoutine_ = false;
     std::cerr << "try verify\n";
@@ -1132,20 +1132,31 @@ void Codegen::codegenBlock(const ast::Block& node, bool isFunctionEntry) {
     for (auto& u: node.units) {
         std::cerr << "unit\n";
         u->codegen(*this);
-        // Destroying temporarily-allocated heap objects after a statement has ended
-        for (auto& heapObj: tmpHeapObjects_) {
-            std::cerr << "decr tmp heap obj\n";
-            heapObjUseCountDecr(heapObj.llPtr, heapObj.type);
 
-            // rm from heapObjs, since the count is already decremented right after the statement
-            auto it = std::find_if(blockInfo.heapObjs.begin(), blockInfo.heapObjs.end(),
-                [&heapObj](HeapObj& obj) { return obj.llPtr == heapObj.llPtr; }
-            );
-            if (it != blockInfo.heapObjs.end())
-                blockInfo.heapObjs.erase(it);
-            std::cerr << "decr done\n";
+        // Destroying temporarily-allocated heap objects after a statement has ended
+        if (!tmpHeapObjects_.empty()) {
+            BasicBlock* llTmpDestructorBlk = BasicBlock::Create(*context_, "tmp_destructor", llParentFn);
+            BasicBlock* llBackBlk = BasicBlock::Create(*context_, "back", llParentFn);
+            builder_->CreateBr(llTmpDestructorBlk);
+
+            builder_->SetInsertPoint(llTmpDestructorBlk);
+            for (auto& heapObj: tmpHeapObjects_) {
+                std::cerr << "decr tmp heap obj\n";
+                heapObjUseCountDecr(heapObj.llPtr, heapObj.type);
+
+                // rm from heapObjs, since the count is already decremented right after the statement
+                auto it = std::find_if(blockInfo.heapObjs.begin(), blockInfo.heapObjs.end(),
+                    [&heapObj](HeapObj& obj) { return obj.llPtr == heapObj.llPtr; }
+                );
+                if (it != blockInfo.heapObjs.end())
+                    blockInfo.heapObjs.erase(it);
+                std::cerr << "decr done\n";
+            }
+
+            builder_->CreateBr(llBackBlk);
+            builder_->SetInsertPoint(llBackBlk);
+            tmpHeapObjects_.clear();
         }
-        tmpHeapObjects_.clear();
     }
     std::cerr << blockInfo.heapObjs.size() << " " << blockInfo.heapObjs.empty() << " done with units\n";
     if (!blockInfo.heapObjs.empty()) {
