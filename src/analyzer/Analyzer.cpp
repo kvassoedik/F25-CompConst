@@ -812,7 +812,7 @@ void Analyzer::validate(RoutineCall& node) {
 }
 
 void Analyzer::validate(ArrayType& node) {
-    node.elemType->validate(*this);
+    validateType(node.elemType);
 
     if (node.size) {
         node.size->validate(*this);
