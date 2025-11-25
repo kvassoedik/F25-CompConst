@@ -1,0 +1,12 @@
+type SimpleRecord is record var num: integer end
+
+routine getTmpObj(): SimpleRecord is
+    var o: SimpleRecord
+    o.num := 17
+    return o
+end
+
+routine main() is
+    print getTmpObj().num = 17
+    print 0
+end
