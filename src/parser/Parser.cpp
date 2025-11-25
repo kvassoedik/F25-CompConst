@@ -1167,7 +1167,6 @@ std::shared_ptr<ReturnStmt> Parser::parseReturnStmt() {
     auto&& expr = parseExpr();
     if (expr) {
         res->val = std::move(expr);
-        return nullptr;
     }
 
     return res;
