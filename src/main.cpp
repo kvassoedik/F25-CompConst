@@ -30,7 +30,9 @@ int main(int argc, char **argv) {
             "               unused    - removal of unused declarations\n"
             "           t    - toggle optimization features\n"
             "               comput (disable)\n"
-            "               unused (disable)\n";
+            "               unused (disable)\n"
+            "       -G - configure code Generation\n"
+            "           print-heap-management - emit code to print on heap-object-related events\n";
 
             return 0;
         }

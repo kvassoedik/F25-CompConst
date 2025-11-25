@@ -644,6 +644,7 @@ void Analyzer::validate(Var& node) {
         if (!node.type)
             node.type = node.val->type;
         node.knownPrimitive = node.val->knownPrimitive;
+        node.val->isNamed = true;
 
         if (!node.knownPrimitive && isInGlobalScope())
             saveError("variables in global scope must be constants or optimized (were compile-time computations disabled?)", node.span);

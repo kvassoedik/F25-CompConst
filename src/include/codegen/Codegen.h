@@ -99,5 +99,8 @@ private:
     bool globalScope_{true};
     bool isMainRoutine_{false};
     bool getVarPtr_{false};
+    struct {
+        bool printHeapManagement{false};
+    } config_;
 };
 }

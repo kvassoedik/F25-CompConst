@@ -22,8 +22,8 @@ routine main() is
 	print o2.x // 6
 	print o2.y // 75.9
 
-	// Also testing shadowing + record member access here
 	o.x := 100
+	o2 := func(o2) // should not change refcount afterward (+1-1 = 0)
 	print func(o2).x // 6
 	print func(o).x // 100
 end

@@ -32,6 +32,23 @@ Codegen::Codegen(std::shared_ptr<ast::Ast> ast)
 }
 
 int Codegen::configure(int* argc, char** argv) {
+    for (int i = 1; i < *argc-1; ++i) {
+        std::string_view arg(argv[i]);
+
+        if (arg.size() > 1 &&
+            "-G" == arg.substr(0, 2))
+        {
+            // Heap obj allocation data
+            std::string_view option = arg.size() > 2 ? arg.substr(2) : "";
+            if ("print-heap-management" == option) {
+                config_.printHeapManagement = true;
+            }
+            else {
+                std::cerr << "Unrecognized -G option: " << option << "\n";
+                return 1;
+            }
+        }
+    }
     return 0;
 }
 
@@ -102,7 +119,15 @@ llvm::Value* Codegen::gen(const ast::Var& node) {
             llvm::Value* llInitialzer;
             if (node.val) {
                 llInitialzer = node.val->codegen(*this);
-                heapObjUseCountInc(llInitialzer);
+                if (node.val->code == ExprEnum::IdRef) {
+                    // increment refcount of the object the access is shared to
+
+                    if (config_.printHeapManagement) {
+                        builder_->CreateCall(module_->getFunction("printf"), builder_->CreateGlobalStringPtr("HEAP: var initialization...\n"));
+                    }
+
+                    heapObjUseCountInc(llInitialzer);
+                }
             } else {
                 llInitialzer = newHeapObject(*node.type, llTy, *builder_);
             }
@@ -141,6 +166,8 @@ llvm::Value* Codegen::gen(const ast::Routine& node) {
         builder_->SetInsertPoint(llEntryBlk);
     }
     std::cerr << "parameteres\n";
+
+    blockStack_.emplace_back(std::list<HeapObj>{}, true);
     for (auto& llParam : llFn->args()) {
         const int paramNo = llParam.getArgNo();
         const auto& param = node.getType()->params[paramNo];
@@ -153,6 +180,15 @@ llvm::Value* Codegen::gen(const ast::Routine& node) {
         vars_.emplace(param.get(), VarMapping{llVar, llFn});
 
         builder_->CreateStore(&llParam, llVar);
+        if (!analyzer::isPrimitiveType(*param->type)) {
+            blockStack_.back().heapObjs.emplace_back(llVar, *param->type);
+
+            if (config_.printHeapManagement) {
+                builder_->CreateCall(module_->getFunction("printf"), builder_->CreateGlobalStringPtr("HEAP: function parameter...\n"));
+            }
+
+            heapObjUseCountInc(&llParam);
+        }
     }
 
     codegenBlock(*node.body, true);
@@ -207,7 +243,15 @@ llvm::Value* Codegen::gen(const ast::Assignment& node) {
     } else if (node.left->type->code == TypeEnum::Array || node.left->type->code == TypeEnum::Record) {
         llvm::Value* llDeref = builder_->CreateLoad(globalTys_.heapObj->getPointerTo(), llLhsPtr);
         heapObjUseCountDecr(llDeref, *node.left->type);
-        heapObjUseCountInc(llRhs);
+        if (node.val->code == ExprEnum::IdRef) {
+            // increment refcount of the object the access is shared to
+
+            if (config_.printHeapManagement) {
+                builder_->CreateCall(module_->getFunction("printf"), builder_->CreateGlobalStringPtr("HEAP: assignment...\n"));
+            }
+
+            heapObjUseCountInc(llRhs);
+        }
     } else
         llvm_unreachable("gen Assignment: unexpected lhs type code");
 
@@ -449,12 +493,17 @@ llvm::Value* Codegen::gen(const ast::ReturnStmt& node) {
             builder_->CreateBr(llClosingBlk);
             builder_->SetInsertPoint(llClosingBlk);
 
+            if (config_.printHeapManagement) {
+                builder_->CreateCall(module_->getFunction("printf"), builder_->CreateGlobalStringPtr("HEAP: calling return destructor...\n"));
+            }
+
             // Call decrement on all heap objects created in this block AND ones above AS LONG AS the blocks belong to this function
             for (auto it = blockStack_.rbegin(); it != blockStack_.rend(); ++it) {
                 for (auto& heapObj: it->heapObjs) {
                     // Don't decrement the refc of the object being returned
                     if (heapObj.llPtr != llRetVal) {
                         llvm::Value* llDeref = builder_->CreateLoad(globalTys_.heapObj->getPointerTo(), heapObj.llPtr);
+
                         heapObjUseCountDecr(llDeref, heapObj.type);
                     }
                 }
@@ -771,9 +820,6 @@ llvm::Value* Codegen::gen(const ast::RoutineCall& node) {
 
     for (auto& arg: node.args) {
         llvm::Value* llArg = arg->codegen(*this);
-        if (!analyzer::isPrimitiveType(*arg->type)) {
-            heapObjUseCountInc(llArg);
-        }
         llArgs.push_back(llArg);
     }
 
@@ -985,6 +1031,10 @@ void Codegen::genMetaFunctions() {
         BasicBlock* llEntryBlk = BasicBlock::Create(*context_, "entry", llFn);
         builder_->SetInsertPoint(llEntryBlk);
 
+        if (config_.printHeapManagement) {
+            builder_->CreateCall(module_->getFunction("printf"), builder_->CreateGlobalStringPtr("***HEAP: refc_inc...\n"));
+        }
+
         // Implementation
         llvm::Argument* llPtr = llFn->getArg(0);
         llvm::Value* llRefcntPtr = builder_->CreateStructGEP(
@@ -1031,12 +1081,19 @@ void Codegen::genMetaFunctions() {
         // free
         builder_->SetInsertPoint(llFreeBlk);
         heapObjDestroy(llPtr);
+
+        if (config_.printHeapManagement) {
+            builder_->CreateCall(module_->getFunction("printf"), builder_->CreateGlobalStringPtr("***HEAP: object freed\n"));
+        }
         builder_->CreateBr(llContBlk);
 
         // dcr
         builder_->SetInsertPoint(llDecrBlk);
         auto* llNewRefcnt = builder_->CreateSub(llRefcntVal, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1));
         builder_->CreateStore(llNewRefcnt, llRefcntPtr);
+        if (config_.printHeapManagement) {
+            builder_->CreateCall(module_->getFunction("printf"), builder_->CreateGlobalStringPtr("***HEAP: refc_decr\n"));
+        }
         builder_->CreateBr(llContBlk);
 
         // continue
@@ -1123,9 +1180,10 @@ void Codegen::convertToDouble(llvm::Value*& llVal) {
 
 void Codegen::codegenBlock(const ast::Block& node, bool isFunctionEntry) {
     llvm::Function *llParentFn = builder_->GetInsertBlock()->getParent();
-    if (!(isFunctionEntry && isMainRoutine_)) {
+    // FunctionEntry pushes the new stack into blockStack itself in the gen method for Routine
+    if (!isFunctionEntry) {
         // Add to the block stack for accounting creation of heap objects
-        blockStack_.push_back({{}, isFunctionEntry});
+        blockStack_.emplace_back(std::list<HeapObj>{}, false);
     }
     BlockInfo& blockInfo = blockStack_.back();
     std::cerr << "new Block " << blockInfo.heapObjs.size() << "\n";
@@ -1140,6 +1198,11 @@ void Codegen::codegenBlock(const ast::Block& node, bool isFunctionEntry) {
             builder_->CreateBr(llTmpDestructorBlk);
 
             builder_->SetInsertPoint(llTmpDestructorBlk);
+
+            if (config_.printHeapManagement) {
+                builder_->CreateCall(module_->getFunction("printf"), builder_->CreateGlobalStringPtr("HEAP: calling tmp object destructor...\n"));
+            }
+
             for (auto& heapObj: tmpHeapObjects_) {
                 std::cerr << "decr tmp heap obj\n";
                 heapObjUseCountDecr(heapObj.llPtr, heapObj.type);
@@ -1170,6 +1233,11 @@ void Codegen::codegenBlock(const ast::Block& node, bool isFunctionEntry) {
             std::cerr << "ne1\n";
             builder_->SetInsertPoint(llClosingBlk);
             std::cerr << blockInfo.heapObjs.size() << " size n2\n";
+
+            if (config_.printHeapManagement) {
+                builder_->CreateCall(module_->getFunction("printf"), builder_->CreateGlobalStringPtr("HEAP: calling block destructor...\n"));
+            }
+
             // Call decrement on all heap objects created in this block
             for (auto& heapObj: blockInfo.heapObjs) {
                 std::cerr << heapObj.llPtr << " heap ptr\n";
@@ -1191,6 +1259,10 @@ void Codegen::codegenBlock(const ast::Block& node, bool isFunctionEntry) {
 llvm::Value* Codegen::newHeapObject(const ast::Type& type, llvm::Type* llTy, llvm::IRBuilder<>& builder) {
     if (!llTy->isStructTy())
         llvm_unreachable("newHeapObject: unexpected llTy");
+
+    if (config_.printHeapManagement) {
+        builder_->CreateCall(module_->getFunction("printf"), builder_->CreateGlobalStringPtr("***HEAP: creating new object\n"));
+    }
 
     llvm::StructType* llStructTy = static_cast<llvm::StructType*>(llTy);
 
