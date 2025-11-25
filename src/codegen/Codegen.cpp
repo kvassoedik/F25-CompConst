@@ -156,16 +156,22 @@ llvm::Value* Codegen::gen(const ast::Routine& node) {
     }
 
     codegenBlock(*node.body, true);
-
+    std::cerr<<"block genned\n";
     if (isMainRoutine_) {
-        llvm::APInt llRetValInt(32 /* bitSize */, 0, true /* signed */);
-        builder_->CreateRet(llvm::ConstantInt::get(*context_, llRetValInt));
+        llvm::Instruction* last = !builder_->GetInsertBlock()->empty()
+            ? &builder_->GetInsertBlock()->back()
+            : nullptr;
+        if (!last || !llvm::isa<llvm::ReturnInst>(last)) {
+            llvm::APInt llRetValInt(32 /* bitSize */, 0, true /* signed */);
+            builder_->CreateRet(llvm::ConstantInt::get(*context_, llRetValInt));
+        }
     } else if (llFn->getReturnType()->isVoidTy()) {
         builder_->CreateRetVoid();
     }
     isMainRoutine_ = false;
-
+    std::cerr << "try verify\n";
     llvm::verifyFunction(*llFn);
+    std::cerr<< "verified\n";
     return nullptr;
 }
 
@@ -273,16 +279,20 @@ llvm::Value* Codegen::gen(const ast::IfStmt& node) {
 
     builder_->SetInsertPoint(llThenBlk);
     codegenBlock(*node.body, false);
-    llvm::Instruction& last = builder_->GetInsertBlock()->back();
-    if (!llvm::isa<llvm::ReturnInst>(&last)) {
+    llvm::Instruction* last = !builder_->GetInsertBlock()->empty()
+        ? &builder_->GetInsertBlock()->back()
+        : nullptr;
+    if (!last || !llvm::isa<llvm::ReturnInst>(last)) {
         builder_->CreateBr(llContBlk);
     }
 
     if (llElseBlk) {
         builder_->SetInsertPoint(llElseBlk);
         codegenBlock(*node.elseBody, false);
-        llvm::Instruction& last = builder_->GetInsertBlock()->back();
-        if (!llvm::isa<llvm::ReturnInst>(&last)) {
+        llvm::Instruction* last = !builder_->GetInsertBlock()->empty()
+            ? &builder_->GetInsertBlock()->back()
+            : nullptr;
+        if (!last || !llvm::isa<llvm::ReturnInst>(last)) {
             builder_->CreateBr(llContBlk);
         }
     }
@@ -362,8 +372,10 @@ llvm::Value* Codegen::gen(const ast::ForStmt& node) {
 
     builder_->SetInsertPoint(llLoopBodyBlk);
     codegenBlock(*node.body, false);
-    llvm::Instruction& last = builder_->GetInsertBlock()->back();
-    if (!llvm::isa<llvm::ReturnInst>(&last)) {
+    llvm::Instruction* last = !builder_->GetInsertBlock()->empty()
+        ? &builder_->GetInsertBlock()->back()
+        : nullptr;
+    if (!last || !llvm::isa<llvm::ReturnInst>(last)) {
         builder_->CreateBr(llLoopBlk);
     }
 
@@ -388,8 +400,10 @@ llvm::Value* Codegen::gen(const ast::WhileStmt& node) {
 
     builder_->SetInsertPoint(llLoopBodyBlk);
     codegenBlock(*node.body, false);
-    llvm::Instruction& last = builder_->GetInsertBlock()->back();
-    if (!llvm::isa<llvm::ReturnInst>(&last)) {
+    llvm::Instruction* last = !builder_->GetInsertBlock()->empty()
+        ? &builder_->GetInsertBlock()->back()
+        : nullptr;
+    if (!last || !llvm::isa<llvm::ReturnInst>(last)) {
         builder_->CreateBr(llLoopBlk);
     }
 
@@ -411,7 +425,7 @@ llvm::Value* Codegen::gen(const ast::ReturnStmt& node) {
             if (isRetValPrimitiveType) {
                 llRetVal = node.val->codegen(*this);
             } else {
-                // Get ptr to heap object, not the object itself to compare to heapObjs.llPtr
+                // Get ptr to heap object, not the object itself, to compare to heapObjs.llPtr
                 llRetVal = codegenPrimaryPtr(*node.val);
             }
         }
@@ -451,19 +465,25 @@ llvm::Value* Codegen::gen(const ast::ReturnStmt& node) {
             BasicBlock* llBackBlk = BasicBlock::Create(*context_, "back", llParentFn);
             builder_->CreateBr(llBackBlk);
             builder_->SetInsertPoint(llBackBlk);
-        }
-        blockStack_.pop_back();
 
+            // clear just in case there are unexpected statements after the return stmt (bug of Analyzer)
+            // to not emit a double free at the end of this block
+            blockStack_.back().heapObjs.clear();
+        }
+        std::cerr << "closeRRR\n";
         if (node.val) {
             if (!isRetValPrimitiveType) {
                 llvm::Type* llRetTy = getType(*node.val->type)->getPointerTo();
                 llRetVal = builder_->CreateLoad(llRetTy, llRetVal);
             }
+            std::cerr << "ALMOST RETURN\n";
             builder_->CreateRet(llRetVal);
         } else {
             builder_->CreateRetVoid();
         }
     }
+
+    std::cerr << blockStack_.back().heapObjs.size() << " " << blockStack_.back().heapObjs.empty() << "\n";
     return nullptr;
 }
 
@@ -1102,51 +1122,57 @@ void Codegen::convertToDouble(llvm::Value*& llVal) {
 
 void Codegen::codegenBlock(const ast::Block& node, bool isFunctionEntry) {
     llvm::Function *llParentFn = builder_->GetInsertBlock()->getParent();
-    BlockInfo* blockInfo;
-    
     if (!(isFunctionEntry && isMainRoutine_)) {
         // Add to the block stack for accounting creation of heap objects
         blockStack_.push_back({{}, isFunctionEntry});
     }
-    blockInfo = &blockStack_.back();
-    std::cerr << "new Block\n";
+    BlockInfo& blockInfo = blockStack_.back();
+    std::cerr << "new Block " << blockInfo.heapObjs.size() << "\n";
     for (auto& u: node.units) {
         std::cerr << "unit\n";
         u->codegen(*this);
         // Destroying temporarily-allocated heap objects after a statement has ended
         for (auto& heapObj: tmpHeapObjects_) {
+            std::cerr << "decr tmp heap obj\n";
             heapObjUseCountDecr(heapObj.llPtr, heapObj.type);
 
             // rm from heapObjs, since the count is already decremented right after the statement
-            auto it = std::find_if(blockInfo->heapObjs.begin(), blockInfo->heapObjs.end(),
+            auto it = std::find_if(blockInfo.heapObjs.begin(), blockInfo.heapObjs.end(),
                 [&heapObj](HeapObj& obj) { return obj.llPtr == heapObj.llPtr; }
             );
-            if (it != blockInfo->heapObjs.end())
-                blockInfo->heapObjs.erase(it);
+            if (it != blockInfo.heapObjs.end())
+                blockInfo.heapObjs.erase(it);
+            std::cerr << "decr done\n";
         }
         tmpHeapObjects_.clear();
     }
-
-    if (!blockInfo->heapObjs.empty()) {
-        llvm::Instruction& last = builder_->GetInsertBlock()->back();
-        if (!llvm::isa<llvm::ReturnInst>(&last)) {
+    std::cerr << blockInfo.heapObjs.size() << " " << blockInfo.heapObjs.empty() << " done with units\n";
+    if (!blockInfo.heapObjs.empty()) {
+        llvm::Instruction* last = !builder_->GetInsertBlock()->empty()
+            ? &builder_->GetInsertBlock()->back()
+            : nullptr;
+        if (!last || !llvm::isa<llvm::ReturnInst>(last)) {
+            std::cerr << "closing blk\n";
             BasicBlock* llClosingBlk = BasicBlock::Create(*context_, "close", llParentFn);
             builder_->CreateBr(llClosingBlk);
+            std::cerr << "ne1\n";
             builder_->SetInsertPoint(llClosingBlk);
-
+            std::cerr << blockInfo.heapObjs.size() << " size n2\n";
             // Call decrement on all heap objects created in this block
-            for (auto& heapObj: blockInfo->heapObjs) {
+            for (auto& heapObj: blockInfo.heapObjs) {
+                std::cerr << heapObj.llPtr << " heap ptr\n";
                 llvm::Value* llDeref = builder_->CreateLoad(globalTys_.heapObj->getPointerTo(), heapObj.llPtr);
+                std::cerr<<"n4\n";
                 heapObjUseCountDecr(llDeref, heapObj.type);
             }
-
+            std::cerr << "n3\n";
             BasicBlock* llBackBlk = BasicBlock::Create(*context_, "back", llParentFn);
             builder_->CreateBr(llBackBlk);
+            std::cerr << "n4\n";
             builder_->SetInsertPoint(llBackBlk);
-        } else
-            return;
+        }
     }
-
+    std::cerr << "Done with Block\n";
     blockStack_.pop_back();
 }
 
