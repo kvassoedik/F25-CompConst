@@ -445,7 +445,7 @@ llvm::Value* Codegen::gen(const ast::ReturnStmt& node) {
         if (hasHeapObjs) {
             // Calling refc_dcr on all objects in the current scope of the function
             llvm::Function* llParentFn = builder_->GetInsertBlock()->getParent();
-            BasicBlock* llClosingBlk = BasicBlock::Create(*context_, "ret_unfold", llParentFn);
+            BasicBlock* llClosingBlk = BasicBlock::Create(*context_, "return_destructor", llParentFn);
             builder_->CreateBr(llClosingBlk);
             builder_->SetInsertPoint(llClosingBlk);
 
@@ -1154,7 +1154,7 @@ void Codegen::codegenBlock(const ast::Block& node, bool isFunctionEntry) {
             : nullptr;
         if (!last || !llvm::isa<llvm::ReturnInst>(last)) {
             std::cerr << "closing blk\n";
-            BasicBlock* llClosingBlk = BasicBlock::Create(*context_, "close", llParentFn);
+            BasicBlock* llClosingBlk = BasicBlock::Create(*context_, "destructor", llParentFn);
             builder_->CreateBr(llClosingBlk);
             std::cerr << "ne1\n";
             builder_->SetInsertPoint(llClosingBlk);
