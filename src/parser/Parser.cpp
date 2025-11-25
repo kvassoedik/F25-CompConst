@@ -86,12 +86,6 @@ std::pair<bool, std::shared_ptr<Tokens::BaseTk>> Parser::parseEntity() {
             currBlock_->units.push_back(std::move(node));
         break;
     }
-    case TokenType::Return: {
-        auto&& node = parseReturnStmt();
-        if (node)
-            currBlock_->units.push_back(std::move(node));
-        break;
-    }
     case TokenType::Identifier: {
         auto&& node = parsePrimary();
         if (node) {
@@ -161,6 +155,12 @@ std::shared_ptr<Block> Parser::parseRoutineBody(Tokens::Span initSpan) {
         if (!success) {
             if (!tk || tk->type == TokenType::End)
                 break;
+            if (tk->type == TokenType::Return) {
+                auto node = parseReturnStmt();
+                if (node)
+                    currBlock_->units.push_back(std::move(node));
+                continue;
+            }
 
             tokens_.move();
             saveError("invalid statement (in routine body)", tk->span);
@@ -185,6 +185,12 @@ void Parser::parseIfBody(std::shared_ptr<IfStmt>& parent, Tokens::Span initSpan)
         if (!success) {
             if (!tk || tk->type == TokenType::End)
                 break;
+            if (tk->type == TokenType::Return) {
+                auto node = parseReturnStmt();
+                if (node)
+                    currBlock_->units.push_back(std::move(node));
+                continue;
+            }
 
             tokens_.move();
             if (tk->type == TokenType::Else) {
@@ -1159,15 +1165,10 @@ std::shared_ptr<ReturnStmt> Parser::parseReturnStmt() {
     tokens_.move();
 
     auto&& expr = parseExpr();
-    if (!expr) {
-        auto afterReturn = tokens_.get();
-        saveError(
-            "expected expression after 'return'",
-            afterReturn ? afterReturn->span : res->span
-        );
+    if (expr) {
+        res->val = std::move(expr);
         return nullptr;
     }
 
-    res->val = std::move(expr);
     return res;
 }
