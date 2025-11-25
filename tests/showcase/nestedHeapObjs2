@@ -1,0 +1,12 @@
+type SimpleRecord is record var num: integer end
+type ComplexArray is array[2] SimpleRecord
+
+routine foo(a: ComplexArray) is
+    print a[0].num
+end
+
+routine main() is
+    var arr: ComplexArray
+    arr[0].num := 17
+    foo(arr) // prints 17
+end

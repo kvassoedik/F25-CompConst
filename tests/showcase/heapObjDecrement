@@ -5,12 +5,9 @@ var x: SimpleRecord
 
 routine func(x: integer) is
     var rec: SimpleRecord
-    rec.num := 35
 
     if x = 2 then
         var r2: SimpleRecord
-        r2.num := 27
-        
         print r2.num
         return
     end
@@ -19,6 +16,5 @@ routine func(x: integer) is
 end
 
 routine main() is
-    func(2) // 27
-    func(1) // 35
+    func(2)
 end

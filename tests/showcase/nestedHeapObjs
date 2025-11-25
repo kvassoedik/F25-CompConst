@@ -1,0 +1,6 @@
+type SimpleRecord is record var num: integer end
+type ComplexArray is array[2] SimpleRecord
+
+routine main() is
+    var arr: ComplexArray
+end
