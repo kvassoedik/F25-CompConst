@@ -25,4 +25,5 @@ routine main() is
 	// Also testing shadowing + record member access here
 	o.x := 100
 	print func(o2).x // 6
+	print func(o).x // 100
 end

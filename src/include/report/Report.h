@@ -55,7 +55,7 @@ public:
         }
         }
 
-        std::cout << ANSI_START ANSI_BOLD ANSI_APPLY << file_->fileName() << ":" << msg.span.line << ":"
+        std::cerr << ANSI_START ANSI_BOLD ANSI_APPLY << file_->fileName() << ":" << msg.span.line << ":"
             << msg.span.start - lineStart + 1 << ANSI_RESET << ": " // Display column right before the start of the erroneous token
             << title << std::move(msg.message) << "\n"
             << logger_.numberedWall(msg.span.line) << sourceText << (lineTooLong ? "..." : "") << "\n"

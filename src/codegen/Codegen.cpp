@@ -711,8 +711,8 @@ llvm::Value* Codegen::gen(const ast::RecordMember& node) {
 
     primaryType_ = fieldType;
     if (node.next) {
-        llPrimaryPtr_ = llFieldPtr;
         llPrimaryTy_ = getType(*primaryType_);
+        llPrimaryPtr_ = builder_->CreateLoad(llPrimaryTy_->getPointerTo(), llFieldPtr);
         return node.next->codegen(*this);
     }
     return llFieldPtr;
@@ -758,7 +758,8 @@ llvm::Value* Codegen::gen(const ast::ArrayAccess& node) {
 
     if (node.next) {
         llPrimaryTy_ = getType(*primaryType_);
-        llPrimaryPtr_ = llElemPtr;
+        llvm::Value* llLoad = builder_->CreateLoad(llPrimaryTy_->getPointerTo(), llElemPtr);
+        llPrimaryPtr_ = llLoad;
         return node.next->codegen(*this);
     }
     return llElemPtr;
@@ -1198,6 +1199,7 @@ llvm::Value* Codegen::newHeapObject(const ast::Type& type, llvm::Type* llTy, llv
     llInitFields.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1));
 
     unsigned rest_offset;
+    llvm::ArrayType* llArrayTy;
     if (type.code == TypeEnum::Array) {
         rest_offset = 2;
 
@@ -1206,7 +1208,8 @@ llvm::Value* Codegen::newHeapObject(const ast::Type& type, llvm::Type* llTy, llv
             llvm_unreachable("newHeapObject: no array type found in map");
 
         // fixed size init
-        llInitFields.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), it->second->getNumElements()));
+        llArrayTy = it->second;
+        llInitFields.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), llArrayTy->getNumElements()));
     } else {
         rest_offset = 1;
     }
@@ -1224,21 +1227,49 @@ llvm::Value* Codegen::newHeapObject(const ast::Type& type, llvm::Type* llTy, llv
         for (unsigned i = 1; i < elemNum; ++i) {
             const ast::Type& elemType = *static_cast<const RecordType&>(type).members[i-1]->type;
             if (!analyzer::isPrimitiveType(elemType)) {
-                llvm::Type* llElemTy = getType(elemType);
-                llvm::Value* llFieldPtr = newHeapObject(elemType, llElemTy, builder);
-                llvm::Value* llGep = builder.CreateStructGEP(llStructTy, llPtr, i, "field_obj");
-                builder.CreateStore(llFieldPtr, llGep);
+                llvm::Type* llFieldTy = getType(elemType);
+                llvm::Value* llFieldHeapPtr = newHeapObject(elemType, llFieldTy, builder);
+                llvm::Value* llFieldPtr = builder.CreateStructGEP(llStructTy, llPtr, i, "field_obj");
+                builder.CreateStore(llFieldHeapPtr, llFieldPtr);
             }
         }
     } else if (type.code == TypeEnum::Array) {
         const ast::Type& elemType = *static_cast<const ast::ArrayType&>(type).elemType;
         if (!analyzer::isPrimitiveType(elemType)) {
-            // Allocate all elements immediately
-            // TODO
-            // llvm::Type* llElemTy = getType(elemType);
-            // llvm::Value* llFieldPtr = newHeapObject(elemType, llElemTy, builder);
-            // llvm::Value* llGep = builder.CreateStructGEP(llStructTy, llPtr, i, "elem_obj");
-            // builder.CreateStore(llFieldPtr, llGep);
+            // Allocate all elements immediately in a while loop
+            llvm::Value* llArrayBasePtr = builder.CreateStructGEP(llStructTy, llPtr, 2);
+
+            llvm::Function* llParentFn = builder.GetInsertBlock()->getParent();
+            llvm::BasicBlock *llLoopBlk = llvm::BasicBlock::Create(*context_, "alloc_loop", llParentFn);
+            llvm::BasicBlock *llLoopBodyBlk = llvm::BasicBlock::Create(*context_, "alloc_loopbody", llParentFn);
+            llvm::BasicBlock *llBrkBlk = llvm::BasicBlock::Create(*context_, "alloc_loopbrk", llParentFn);
+
+            llvm::Value* llCounterVar = builder.CreateAlloca(llvm::Type::getInt32Ty(*context_), nullptr, "arr_it");
+            builder.CreateStore(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0), llCounterVar);
+            builder.CreateBr(llLoopBlk);
+
+            builder.SetInsertPoint(llLoopBlk);
+            llvm::Value* llCounterValue = builder.CreateLoad(llvm::Type::getInt32Ty(*context_), llCounterVar);
+            llvm::Value* llCond = builder.CreateICmpSLT(llCounterValue, llInitFields[1]);
+            builder.CreateCondBr(llCond, llLoopBodyBlk, llBrkBlk);
+
+            builder.SetInsertPoint(llLoopBodyBlk);
+            llvm::Type* llElemTy = getType(elemType);
+            llvm::Value* llObjHeapPtr = newHeapObject(elemType, llElemTy, builder);
+            llCounterValue = builder.CreateLoad(llvm::Type::getInt32Ty(*context_), llCounterVar);
+            llvm::Value* llElemPtr = builder.CreateGEP(llArrayTy, llArrayBasePtr,
+                {
+                    llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0),
+                    llCounterValue,
+                }, "elem_obj"
+            );
+            builder.CreateStore(llObjHeapPtr, llElemPtr);
+
+            llvm::Value* llStep = builder.CreateAdd(llCounterValue, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1));
+            builder.CreateStore(llStep, llCounterVar);
+            builder.CreateBr(llLoopBlk);
+
+            builder.SetInsertPoint(llBrkBlk);
         }
     } else
         llvm_unreachable("newHeapObject: unexpected type");
@@ -1256,22 +1287,59 @@ void Codegen::heapObjUseCountDecr(llvm::Value* llPtr, const ast::Type& type) {
     if (type.code == TypeEnum::Record) {
         const auto& members = static_cast<const RecordType&>(type).members;
         for (size_t i = 0; i < members.size(); ++i) {
-            const auto& type = *members[i]->type;
-            if (!analyzer::isPrimitiveType(type)) {
+            const auto& memberType = *members[i]->type;
+            if (!analyzer::isPrimitiveType(memberType)) {
                 llvm::Type* llTy = getType(type);
-                llvm::Value* llMemberPtr = builder_->CreateStructGEP(llTy, llPtr, i + 1, "field_obj");
+                llvm::Value* llMemberPtr = builder_->CreateStructGEP(llTy, llPtr, i + 1, "field_ptr");
                 llvm::Value* llDeref = builder_->CreateLoad(globalTys_.heapObj->getPointerTo(), llMemberPtr);
-                heapObjUseCountDecr(llDeref, type);
+                heapObjUseCountDecr(llDeref, memberType);
             }
         }
     } else if (type.code == TypeEnum::Array) {
         const ast::Type& elemType = *static_cast<const ast::ArrayType&>(type).elemType;
         if (!analyzer::isPrimitiveType(elemType)) {
-            // TODO
-            // Decrement on each element
+            // Decrement on each element in a while loop
+            llvm::Type* llStructTy = getType(type);
+            auto it = typeArrayHashMap_.find(llStructTy);
+            if (it == typeArrayHashMap_.end())
+                llvm_unreachable("heapObjUseCountDecr: array type not found in map");
+            llvm::ArrayType* llArrayTy = it->second;
+            llvm::Value* llSizeRttiPtr = builder_->CreateStructGEP(globalTys_.heapArrayObj, llPtr, 1);
+            llvm::Value* llArraySize = builder_->CreateLoad(llvm::Type::getInt32Ty(*context_), llSizeRttiPtr);
+            llvm::Value* llArrayBasePtr = builder_->CreateStructGEP(llStructTy, llPtr, 2);
+
+            llvm::Function* llParentFn = builder_->GetInsertBlock()->getParent();
+            llvm::BasicBlock *llLoopBlk = llvm::BasicBlock::Create(*context_, "refc_dcr_loop", llParentFn);
+            llvm::BasicBlock *llLoopBodyBlk = llvm::BasicBlock::Create(*context_, "refc_dcr_loopbody", llParentFn);
+            llvm::BasicBlock *llBrkBlk = llvm::BasicBlock::Create(*context_, "refc_dcr_loopbrk", llParentFn);
+
+            llvm::Value* llCounterVar = builder_->CreateAlloca(llvm::Type::getInt32Ty(*context_), nullptr, "arr_it");
+            builder_->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0), llCounterVar);
+            builder_->CreateBr(llLoopBlk);
+
+            builder_->SetInsertPoint(llLoopBlk);
+            llvm::Value* llCounterValue = builder_->CreateLoad(llvm::Type::getInt32Ty(*context_), llCounterVar);
+            llvm::Value* llCond = builder_->CreateICmpSLT(llCounterValue, llArraySize);
+            builder_->CreateCondBr(llCond, llLoopBodyBlk, llBrkBlk);
+
+            builder_->SetInsertPoint(llLoopBodyBlk);
+            llCounterValue = builder_->CreateLoad(llvm::Type::getInt32Ty(*context_), llCounterVar);
+            llvm::Value* llElemPtr = builder_->CreateGEP(llArrayTy, llArrayBasePtr,
+                {
+                    llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0),
+                    llCounterValue,
+                }, "elem_obj"
+            );
+            llvm::Value* llElem = builder_->CreateLoad(globalTys_.heapObj->getPointerTo(), llElemPtr);
+            heapObjUseCountDecr(llElem, elemType);
+            llvm::Value* llStep = builder_->CreateAdd(llCounterValue, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1));
+            builder_->CreateStore(llStep, llCounterVar);
+            builder_->CreateBr(llLoopBlk);
+
+            builder_->SetInsertPoint(llBrkBlk);
         }
     } else
-        llvm_unreachable("heapObjUseCountDecr: unexpected provided type");
+        llvm_unreachable("heapObjUseCountDecr: unexpected provided type " + std::to_string(static_cast<int>(type.code)));
 
     builder_->CreateCall(globals_.refc_dcr, {llPtr});
 }

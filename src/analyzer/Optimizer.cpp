@@ -475,6 +475,8 @@ void Optimizer::removeUnusedDecls(Block& currBlock) {
 Optimizer::AssignmentOptStatus Optimizer::optimizeAssignmentAway(Assignment& node, std::shared_ptr<Decl>& decl, bool firstTimeUsed) {
     if (!decl)
         return AssignmentOptStatus::Skip;
+    if (!analyzer::isPrimitiveType(*decl->type))
+        return AssignmentOptStatus::Fail;
 
     auto& var = static_cast<Var&>(*decl);
     if (var.knownPrimitive && firstTimeUsed) {

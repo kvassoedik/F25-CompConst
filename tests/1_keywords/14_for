@@ -5,11 +5,11 @@ routine foo(arr: array[] boolean, a: integer) is
 end
 
 routine main() is
-    for x in 0..9 loop
-        print x + 1
+    for x in 0..2 loop
+        print x
     end
-    for x in 0..9 reverse loop
-        print x + 1
+    for x in 0..2 reverse loop
+        print x
     end
 
     var a: array[3] integer
@@ -32,8 +32,8 @@ routine main() is
 end
 
 /* Output:
-1..10
-10..1
+0..2
+2..0
 0 2 4
 4 2 0
 false
