@@ -1,7 +1,7 @@
 #pragma once
 
 #include "parser/Ast.h"
-#include "FileReader.h"
+#include "utils/FileReader.h"
 
 namespace analyzer {
 

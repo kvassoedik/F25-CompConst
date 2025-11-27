@@ -1,8 +1,8 @@
 #pragma once
 
-#include "report/CompileMsg.h"
+#include "utils/report/CompileMsg.h"
 #include "utils/PrintingUtils.h"
-#include "FileReader.h"
+#include "utils/FileReader.h"
 #include <iostream>
 
 class Reporter final {

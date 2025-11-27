@@ -7,7 +7,7 @@
 
 #if AST_DEBUG_ON
 
-#include "parser/fwd_structs.h"
+#include "parser/structs_fwd.h"
 #include "utils/PrintingUtils.h"
 #include <iostream>
 #include <memory>

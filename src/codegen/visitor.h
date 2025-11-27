@@ -1,6 +1,6 @@
 #pragma once
 
-#include "parser/fwd_structs.h"
+#include "parser/structs_fwd.h"
 
 namespace llvm {
 class Value;

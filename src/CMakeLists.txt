@@ -219,5 +219,5 @@ add_library(${LIB_NAME}
 # )
 target_link_libraries(${LIB_NAME} llvm-core::llvm-core)
 
-target_include_directories(${LIB_NAME} PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(${LIB_NAME} PUBLIC ${CMAKE_SOURCE_DIR}/)
 target_link_libraries(${PROJECT_NAME} PUBLIC ${LIB_NAME})

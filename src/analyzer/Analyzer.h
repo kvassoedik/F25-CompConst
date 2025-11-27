@@ -1,7 +1,7 @@
 #pragma once
 
 #include "analyzer/Optimizer.h"
-#include "report/Report.h"
+#include "utils/report/Report.h"
 #include <memory>
 #include <unordered_map>
 

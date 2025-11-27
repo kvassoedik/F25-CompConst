@@ -4,8 +4,8 @@
 
 #pragma once
 
-#include "report/Report.h"
-#include "FileReader.h"
+#include "utils/report/Report.h"
+#include "utils/FileReader.h"
 #include <vector>
 
 class Lexer {

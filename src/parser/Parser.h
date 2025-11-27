@@ -3,8 +3,8 @@
 #include "parser/Ast.h"
 #include "lexer/Tokens.h"
 #include "lexer/TokenList.h"
-#include "FileReader.h"
-#include "report/Report.h"
+#include "utils/FileReader.h"
+#include "utils/report/Report.h"
 #include <memory>
 
 class Parser final {
