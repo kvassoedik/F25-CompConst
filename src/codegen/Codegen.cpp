@@ -686,18 +686,6 @@ llvm::Value* Codegen::gen(const ast::IdRef& node) {
         llvm_unreachable("Codegen IdRef ref is not yet added to vars map");
 
     llvm::Value* llVar = it->second.llVarAllocation;
-    // llvm::Value* llVar;
-    // if (!it->second.llParentFn) {
-    //     // is a global var, load first
-    //     llVar = builder_->CreateLoad(
-    //         llvm::PointerType::getUnqual(*context_),
-    //         it->second.llVarAllocation,
-    //         node.id + "_dref"
-    //     );
-    // } else {
-        
-    // }
-
     llvm::Type* llTy = getType(*varDecl->type); // pointers are opaque, so we need to get the type from AST again
     if (node.next) {
         primaryType_ = varDecl->type.get();
@@ -735,7 +723,15 @@ llvm::Value* Codegen::gen(const ast::RecordMember& node) {
         llvm_unreachable("Codegen RecordMember: rogue");
     if (primaryType_->code != TypeEnum::Record) {
         if (primaryType_->code == TypeEnum::Array && node.id == "size") {
-            // TODO
+            auto it = typeArrayHashMap_.find(llPrimaryTy_);
+            if (it == typeArrayHashMap_.end())
+                llvm_unreachable("gen RecordMember: array type not in map");
+            llPrimaryPtr_->dump();
+            llPrimaryTy_->dump();
+            llvm::ArrayType* llArrayTy = it->second;
+            llvm::Value* llSizeRttiPtr = builder_->CreateStructGEP(globalTys_.heapArrayObj, llPrimaryPtr_, 1);
+            primaryType_ = ast_->getBaseTypes().integer.get();
+            return llSizeRttiPtr;
         }
         llvm_unreachable("Codegen RecordMember: parent type is not a record");
     }

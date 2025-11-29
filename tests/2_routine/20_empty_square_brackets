@@ -1,10 +1,8 @@
-var a: array[5] integer
+var globalVar: record var arr: array[5] integer end
 
-// NOTE: if a was a member of a record, and the record was a param to a function, this wouldn't work?
 routine func(a: array[] integer) is
-    print a.size // 5
-    for i in 0..a.size loop
-        a[i] := i-1
+    for i in 1..a.size-1 loop
+        a[i] := i
     end
     for i in a loop
         print a[i]
@@ -12,5 +10,5 @@ routine func(a: array[] integer) is
 end
 
 routine main() is
-    func(a)
+    func(globalVar.arr)
 end
