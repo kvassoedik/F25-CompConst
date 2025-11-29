@@ -22,12 +22,14 @@ Codegen::Codegen(std::shared_ptr<ast::Ast> ast)
     tmpHeapObjects_.reserve(16);
     globalTys_.integer = llvm::Type::getInt64Ty(*context_);
     globalTys_.real = llvm::Type::getDoubleTy(*context_);
+    globalTys_.refcSize = llvm::Type::getInt32Ty(*context_);
+    globalTys_.arraySize = llvm::Type::getInt32Ty(*context_);
     globalTys_.heapObj = llvm::StructType::create(*context_, {
-        llvm::Type::getInt32Ty(*context_) /* ref_count */
+        globalTys_.refcSize /* ref_count */
     }, "heap_obj");
     globalTys_.heapArrayObj = llvm::StructType::create(*context_, {
-        llvm::Type::getInt32Ty(*context_) /* ref_count */,
-        llvm::Type::getInt32Ty(*context_) /* fixed size */
+        globalTys_.refcSize /* ref_count */,
+        globalTys_.arraySize /* fixed size */
     }, "arr_obj");
 }
 
@@ -304,6 +306,7 @@ llvm::Value* Codegen::gen(const ast::PrintStmt& node) {
 
     llvm::Function *llPrintf = module_->getFunction("printf");
     builder_->CreateCall(llPrintf, llArgs);
+
     return nullptr;
 }
 
@@ -376,7 +379,7 @@ llvm::Value* Codegen::gen(const ast::ForStmt& node) {
 
         llvm::Value* llDeref = builder_->CreateLoad(globalTys_.heapArrayObj->getPointerTo(), it->second.llVarAllocation);
         llvm::Value* llSizeRttiPtr = builder_->CreateStructGEP(globalTys_.heapArrayObj, llDeref, 1);
-        llEnd = builder_->CreateLoad(llvm::Type::getInt32Ty(*context_), llSizeRttiPtr);
+        llEnd = builder_->CreateLoad(globalTys_.arraySize, llSizeRttiPtr);
         llEnd = builder_->CreateSExt(llEnd, globalTys_.integer);
         llEnd = builder_->CreateSub(llEnd, llvm::ConstantInt::get(globalTys_.integer, 1));
     }
@@ -782,10 +785,10 @@ llvm::Value* Codegen::gen(const ast::ArrayAccess& node) {
     getVarPtr_ = prevGetVarPtr;
 
     // truncate to i32
-    llOffset = builder_->CreateTruncOrBitCast(llOffset, llvm::Type::getInt32Ty(*context_));
+    llOffset = builder_->CreateTruncOrBitCast(llOffset, globalTys_.arraySize);
 
     primaryType_ = static_cast<ast::ArrayType*>(primaryType_)->elemType.get();
-    llvm::Value* llArrayPtr = builder_->CreateStructGEP(llPrimaryTy_, llPrimaryPtr_,
+    llvm::Value* llArrayBasePtr = builder_->CreateStructGEP(llPrimaryTy_, llPrimaryPtr_,
         2 /* skip over meta info */
     );
 
@@ -793,8 +796,15 @@ llvm::Value* Codegen::gen(const ast::ArrayAccess& node) {
     if (it == typeArrayHashMap_.end())
         llvm_unreachable("gen ArrayAccess: no array type inside hash map");
 
+    // Check in-bounds
+    builder_->CreateCall(globals_.arr_bnds_ck, {
+        llPrimaryPtr_,
+        llArrayBasePtr,
+        llOffset
+    });
+
     // Return ptr to this element
-    llvm::Value* llElemPtr = builder_->CreateGEP(it->second, llArrayPtr,
+    llvm::Value* llElemPtr = builder_->CreateGEP(it->second, llArrayBasePtr,
         {
             llvm::ConstantInt::get(*context_, llvm::APInt(32, 0)), 
             llOffset,
@@ -896,10 +906,8 @@ llvm::Type* Codegen::genType(const ast::ArrayType& node) {
     std::cerr << "arr type\n";
     llvm::ArrayType* llArrayTy = llvm::ArrayType::get(llElemTy, size);
     llvm::Type* llTy = StructType::create({
-        // ref_count
-        llvm::Type::getInt32Ty(*context_),
-        // fixed size for RTTI
-        llvm::Type::getInt32Ty(*context_),
+        globalTys_.refcSize,
+        globalTys_.arraySize,
         // static array itself
         llArrayTy
     });
@@ -911,8 +919,7 @@ llvm::Type* Codegen::genType(const ast::ArrayType& node) {
 llvm::Type* Codegen::genType(const ast::RecordType& node) {
     std::vector<llvm::Type*> members;
     members.reserve(node.members.size() + 1);
-    // ref_count
-    members.push_back(llvm::Type::getInt32Ty(*context_));
+    members.push_back(globalTys_.refcSize);
 
     for (auto& member: node.members) {
         llvm::Type* llMemberTy = getType(*member->type);
@@ -974,11 +981,12 @@ void Codegen::initMetaGlobals() {
         )
     );
 
+    llvm::Type *ptrSizeTy = module_->getDataLayout().getIntPtrType(*context_, /*AddressSpace=*/0);
     module_->getOrInsertFunction(
         "malloc",
         llvm::FunctionType::get(
             llvm::Type::getInt8Ty(*context_)->getPointerTo(),
-            llvm::IntegerType::getInt64Ty(*context_),
+            ptrSizeTy,
             false
         )
     );
@@ -988,6 +996,14 @@ void Codegen::initMetaGlobals() {
         llvm::FunctionType::get(
             llvm::Type::getVoidTy(*context_),
             llvm::Type::getInt8Ty(*context_)->getPointerTo(),
+            false
+        )
+    );
+
+    module_->getOrInsertFunction(
+        "abort",
+        llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*context_),
             false
         )
     );
@@ -1038,7 +1054,7 @@ void Codegen::genMetaFunctions() {
             llPtr, 0
         );
 
-        llvm::Value* llRefcntVal = builder_->CreateLoad(llvm::Type::getInt32Ty(*context_), llRefcntPtr, "refcnt");
+        llvm::Value* llRefcntVal = builder_->CreateLoad(globalTys_.refcSize, llRefcntPtr, "refcnt");
         llvm::Value* llNewRefcnt = builder_->CreateAdd(llRefcntVal, llvm::ConstantInt::get(*context_, llvm::APInt(32, 1)));
         builder_->CreateStore(llNewRefcnt, llRefcntPtr);
 
@@ -1070,7 +1086,7 @@ void Codegen::genMetaFunctions() {
         llvm::BasicBlock* llDecrBlk = llvm::BasicBlock::Create(*context_, "dcr", llParentFn);
         llvm::BasicBlock* llContBlk = llvm::BasicBlock::Create(*context_, "continue", llParentFn);
 
-        llvm::Value* llRefcntVal = builder_->CreateLoad(llvm::Type::getInt32Ty(*context_), llRefcntPtr, "refcnt");
+        llvm::Value* llRefcntVal = builder_->CreateLoad(globalTys_.refcSize, llRefcntPtr, "refcnt");
         llvm::Value* llCmp = builder_->CreateICmpSLE(llRefcntVal, llvm::ConstantInt::get(*context_, llvm::APInt(32, 1)));
         builder_->CreateCondBr(llCmp, llFreeBlk, llDecrBlk);
 
@@ -1085,7 +1101,7 @@ void Codegen::genMetaFunctions() {
 
         // dcr
         builder_->SetInsertPoint(llDecrBlk);
-        auto* llNewRefcnt = builder_->CreateSub(llRefcntVal, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1));
+        auto* llNewRefcnt = builder_->CreateSub(llRefcntVal, llvm::ConstantInt::get(globalTys_.refcSize, 1));
         builder_->CreateStore(llNewRefcnt, llRefcntPtr);
         if (config_.printHeapManagement) {
             builder_->CreateCall(module_->getFunction("printf"), builder_->CreateGlobalStringPtr("***HEAP: refc_decr\n"));
@@ -1095,6 +1111,64 @@ void Codegen::genMetaFunctions() {
         // continue
         builder_->SetInsertPoint(llContBlk);
         builder_->CreateRetVoid();
+    }
+    /* arr_bnds_ck */
+    std::cerr << "init1\n";
+    {
+        llvm::FunctionType* llFnTy = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*context_),
+            {
+                globalTys_.heapObj->getPointerTo(), // ptr
+                globalTys_.heapObj->getPointerTo(), // array base ptr
+                globalTys_.arraySize // offset
+            },
+            false /* isVarArgs */
+        );
+
+        llvm::Function* llFn = llvm::Function::Create(llFnTy, llvm::Function::ExternalLinkage, ".arr_bnds_ck", module_.get());
+        globals_.arr_bnds_ck = llFn;
+
+        BasicBlock* llEntryBlk = BasicBlock::Create(*context_, "entry", llFn);
+        builder_->SetInsertPoint(llEntryBlk);
+
+        // Implementation
+        llvm::Argument* llPtr = llFn->getArg(0);
+        llvm::Argument* llArrayBasePtr = llFn->getArg(1);
+        llvm::Argument* llOffset = llFn->getArg(2);
+
+        llvm::Value* llSizeRttiPtr = builder_->CreateStructGEP(
+            globalTys_.heapArrayObj,
+            llPtr, 1
+        );
+        llvm::Value* llArraySize = builder_->CreateLoad(globalTys_.arraySize, llSizeRttiPtr);
+        // llvm::Type* ptrSizeTy = module_->getDataLayout().getIntPtrType(*context_, /*AddressSpace=*/0);
+        // llArraySize = builder_->CreateSExt(llArraySize, ptrSizeTy);
+
+        llvm::BasicBlock *llSecondCheckBlk = llvm::BasicBlock::Create(*context_, "ck_less", llFn);
+        llvm::BasicBlock *llOkBlk = llvm::BasicBlock::Create(*context_, "ok", llFn);
+        llvm::BasicBlock *llOutOfBoundsBlk = llvm::BasicBlock::Create(*context_, "out_of_bounds", llFn);
+
+        llvm::Value* llCond = builder_->CreateICmpSGE(llOffset, llArraySize, "ge_ck");
+        builder_->CreateCondBr(llCond, llOutOfBoundsBlk, llSecondCheckBlk);
+
+        builder_->SetInsertPoint(llSecondCheckBlk);
+        llCond = builder_->CreateICmpSLT(llOffset, llvm::ConstantInt::get(globalTys_.arraySize, 0), "lt_ck");
+        builder_->CreateCondBr(llCond, llOutOfBoundsBlk, llOkBlk);
+
+        builder_->SetInsertPoint(llOkBlk);
+        builder_->CreateRetVoid();
+
+        builder_->SetInsertPoint(llOutOfBoundsBlk);
+        llvm::Function* llPrintf = module_->getFunction("printf");
+        llvm::Constant* llStr = builder_->CreateGlobalStringPtr("[RUNTIME-ERROR]: array out-of-bounds access; offset by %d elements\n", ".aobabrt_str");
+        builder_->CreateCall(llPrintf, {
+            llStr,
+            llOffset
+        });
+
+        llvm::Function* llAbort = module_->getFunction("abort");
+        builder_->CreateCall(llAbort);
+        builder_->CreateUnreachable();
     }
 }
 
@@ -1265,8 +1339,9 @@ llvm::Value* Codegen::newHeapObject(const ast::Type& type, llvm::Type* llTy, llv
     const llvm::DataLayout& llDl = module_->getDataLayout();
     uint64_t sizeInBytes = llDl.getTypeAllocSize(llTy);
 
+    llvm::Type *ptrSizeTy = module_->getDataLayout().getIntPtrType(*context_, /*AddressSpace=*/0);
     llvm::Function *llMalloc = module_->getFunction("malloc");
-    llvm::Value* llSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), sizeInBytes);
+    llvm::Value* llSize = llvm::ConstantInt::get(ptrSizeTy, sizeInBytes);
     llvm::Value* llPtr = builder.CreateCall(llMalloc, {llSize}, "obj");
     
     // Initialize heap-object fields
@@ -1275,7 +1350,7 @@ llvm::Value* Codegen::newHeapObject(const ast::Type& type, llvm::Type* llTy, llv
     llInitFields.reserve(elemNum);
 
     // ref_count init to 1
-    llInitFields.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1));
+    llInitFields.push_back(llvm::ConstantInt::get(globalTys_.refcSize, 1));
 
     unsigned rest_offset;
     llvm::ArrayType* llArrayTy;
@@ -1288,7 +1363,7 @@ llvm::Value* Codegen::newHeapObject(const ast::Type& type, llvm::Type* llTy, llv
 
         // fixed size init
         llArrayTy = it->second;
-        llInitFields.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), llArrayTy->getNumElements()));
+        llInitFields.push_back(llvm::ConstantInt::get(globalTys_.arraySize, llArrayTy->getNumElements()));
     } else {
         rest_offset = 1;
     }
@@ -1323,28 +1398,28 @@ llvm::Value* Codegen::newHeapObject(const ast::Type& type, llvm::Type* llTy, llv
             llvm::BasicBlock *llLoopBodyBlk = llvm::BasicBlock::Create(*context_, "alloc_loopbody", llParentFn);
             llvm::BasicBlock *llBrkBlk = llvm::BasicBlock::Create(*context_, "alloc_loopbrk", llParentFn);
 
-            llvm::Value* llCounterVar = builder.CreateAlloca(llvm::Type::getInt32Ty(*context_), nullptr, "arr_it");
-            builder.CreateStore(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0), llCounterVar);
+            llvm::Value* llCounterVar = builder.CreateAlloca(globalTys_.arraySize, nullptr, "arr_it");
+            builder.CreateStore(llvm::ConstantInt::get(globalTys_.arraySize, 0), llCounterVar);
             builder.CreateBr(llLoopBlk);
 
             builder.SetInsertPoint(llLoopBlk);
-            llvm::Value* llCounterValue = builder.CreateLoad(llvm::Type::getInt32Ty(*context_), llCounterVar);
+            llvm::Value* llCounterValue = builder.CreateLoad(globalTys_.arraySize, llCounterVar);
             llvm::Value* llCond = builder.CreateICmpSLT(llCounterValue, llInitFields[1]);
             builder.CreateCondBr(llCond, llLoopBodyBlk, llBrkBlk);
 
             builder.SetInsertPoint(llLoopBodyBlk);
             llvm::Type* llElemTy = getType(elemType);
             llvm::Value* llObjHeapPtr = newHeapObject(elemType, llElemTy, builder);
-            llCounterValue = builder.CreateLoad(llvm::Type::getInt32Ty(*context_), llCounterVar);
+            llCounterValue = builder.CreateLoad(globalTys_.arraySize, llCounterVar);
             llvm::Value* llElemPtr = builder.CreateGEP(llArrayTy, llArrayBasePtr,
                 {
-                    llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0),
+                    llvm::ConstantInt::get(globalTys_.arraySize, 0),
                     llCounterValue,
                 }, "elem_obj"
             );
             builder.CreateStore(llObjHeapPtr, llElemPtr);
 
-            llvm::Value* llStep = builder.CreateAdd(llCounterValue, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1));
+            llvm::Value* llStep = builder.CreateAdd(llCounterValue, llvm::ConstantInt::get(globalTys_.arraySize, 1));
             builder.CreateStore(llStep, llCounterVar);
             builder.CreateBr(llLoopBlk);
 
@@ -1384,7 +1459,7 @@ void Codegen::heapObjUseCountDecr(llvm::Value* llPtr, const ast::Type& type) {
                 llvm_unreachable("heapObjUseCountDecr: array type not found in map");
             llvm::ArrayType* llArrayTy = it->second;
             llvm::Value* llSizeRttiPtr = builder_->CreateStructGEP(globalTys_.heapArrayObj, llPtr, 1);
-            llvm::Value* llArraySize = builder_->CreateLoad(llvm::Type::getInt32Ty(*context_), llSizeRttiPtr);
+            llvm::Value* llArraySize = builder_->CreateLoad(globalTys_.arraySize, llSizeRttiPtr);
             llvm::Value* llArrayBasePtr = builder_->CreateStructGEP(llStructTy, llPtr, 2);
 
             llvm::Function* llParentFn = builder_->GetInsertBlock()->getParent();
@@ -1392,26 +1467,26 @@ void Codegen::heapObjUseCountDecr(llvm::Value* llPtr, const ast::Type& type) {
             llvm::BasicBlock *llLoopBodyBlk = llvm::BasicBlock::Create(*context_, "refc_dcr_loopbody", llParentFn);
             llvm::BasicBlock *llBrkBlk = llvm::BasicBlock::Create(*context_, "refc_dcr_loopbrk", llParentFn);
 
-            llvm::Value* llCounterVar = builder_->CreateAlloca(llvm::Type::getInt32Ty(*context_), nullptr, "arr_it");
-            builder_->CreateStore(llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0), llCounterVar);
+            llvm::Value* llCounterVar = builder_->CreateAlloca(globalTys_.arraySize, nullptr, "arr_it");
+            builder_->CreateStore(llvm::ConstantInt::get(globalTys_.arraySize, 0), llCounterVar);
             builder_->CreateBr(llLoopBlk);
 
             builder_->SetInsertPoint(llLoopBlk);
-            llvm::Value* llCounterValue = builder_->CreateLoad(llvm::Type::getInt32Ty(*context_), llCounterVar);
+            llvm::Value* llCounterValue = builder_->CreateLoad(globalTys_.arraySize, llCounterVar);
             llvm::Value* llCond = builder_->CreateICmpSLT(llCounterValue, llArraySize);
             builder_->CreateCondBr(llCond, llLoopBodyBlk, llBrkBlk);
 
             builder_->SetInsertPoint(llLoopBodyBlk);
-            llCounterValue = builder_->CreateLoad(llvm::Type::getInt32Ty(*context_), llCounterVar);
+            llCounterValue = builder_->CreateLoad(globalTys_.arraySize, llCounterVar);
             llvm::Value* llElemPtr = builder_->CreateGEP(llArrayTy, llArrayBasePtr,
                 {
-                    llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0),
+                    llvm::ConstantInt::get(globalTys_.arraySize, 0),
                     llCounterValue,
                 }, "elem_obj"
             );
             llvm::Value* llElem = builder_->CreateLoad(globalTys_.heapObj->getPointerTo(), llElemPtr);
             heapObjUseCountDecr(llElem, elemType);
-            llvm::Value* llStep = builder_->CreateAdd(llCounterValue, llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 1));
+            llvm::Value* llStep = builder_->CreateAdd(llCounterValue, llvm::ConstantInt::get(globalTys_.arraySize, 1));
             builder_->CreateStore(llStep, llCounterVar);
             builder_->CreateBr(llLoopBlk);
 

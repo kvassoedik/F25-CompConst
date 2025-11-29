@@ -67,10 +67,10 @@ private:
     std::unordered_map<llvm::Type*, llvm::ArrayType*> typeArrayHashMap_;
     struct {
         llvm::Constant *strTrue, *strFalse;
-        llvm::Function *main, *refc_inc, *refc_dcr;
+        llvm::Function *main, *refc_inc, *refc_dcr, *arr_bnds_ck;
     } globals_;
     struct {
-        llvm::Type *real, *integer;
+        llvm::Type *real, *integer, *refcSize, *arraySize;
         llvm::StructType *heapObj, *heapArrayObj;
     } globalTys_;
 
