@@ -95,6 +95,7 @@ llvm::Value* Codegen::gen(const ast::Var& node) {
                 llvm_unreachable("no blockStack entries (globalVar)");
             auto& blockInfo = blockStack_.back();
             blockInfo.heapObjs.emplace_back(llGlobalVar, *node.type);
+            std::cerr << "GLOBAL VAR " ;
         }
 
         vars_.emplace(&node, VarMapping{llGlobalVar, nullptr});
@@ -169,7 +170,8 @@ llvm::Value* Codegen::gen(const ast::Routine& node) {
     }
     std::cerr << "parameteres\n";
 
-    blockStack_.emplace_back(std::list<HeapObj>{}, true);
+    if (!isMainRoutine_)
+        blockStack_.emplace_back(std::list<HeapObj>{}, true);
     for (auto& llParam : llFn->args()) {
         const int paramNo = llParam.getArgNo();
         const auto& param = node.getType()->params[paramNo];
@@ -243,8 +245,6 @@ llvm::Value* Codegen::gen(const ast::Assignment& node) {
             llRhs = builder_->CreateICmpNE(llRhs, llvm::ConstantInt::get(*context_, llvm::APInt(1, 0)), "itob");
         }
     } else if (node.left->type->code == TypeEnum::Array || node.left->type->code == TypeEnum::Record) {
-        llvm::Value* llDeref = builder_->CreateLoad(globalTys_.heapObj->getPointerTo(), llLhsPtr);
-        heapObjUseCountDecr(llDeref, *node.left->type);
         if (node.val->code == ExprEnum::IdRef) {
             // increment refcount of the object the access is shared to
 
@@ -254,6 +254,9 @@ llvm::Value* Codegen::gen(const ast::Assignment& node) {
 
             heapObjUseCountInc(llRhs);
         }
+        
+        llvm::Value* llDeref = builder_->CreateLoad(globalTys_.heapObj->getPointerTo(), llLhsPtr);
+        heapObjUseCountDecr(llDeref, *node.left->type);
     } else
         llvm_unreachable("gen Assignment: unexpected lhs type code");
 
@@ -1254,9 +1257,10 @@ void Codegen::codegenBlock(const ast::Block& node, bool isFunctionEntry) {
     if (!isFunctionEntry) {
         // Add to the block stack for accounting creation of heap objects
         blockStack_.emplace_back(std::list<HeapObj>{}, false);
+        std::cerr << "push new BLOCKL\n";
     }
     BlockInfo& blockInfo = blockStack_.back();
-    std::cerr << "new Block " << blockInfo.heapObjs.size() << "\n";
+    std::cerr << "new Block " << blockStack_.size() << " : " << blockInfo.heapObjs.size() << "\n";
     for (auto& u: node.units) {
         std::cerr << "unit\n";
         u->codegen(*this);
@@ -1331,7 +1335,7 @@ llvm::Value* Codegen::newHeapObject(const ast::Type& type, llvm::Type* llTy, llv
         llvm_unreachable("newHeapObject: unexpected llTy");
 
     if (config_.printHeapManagement) {
-        builder_->CreateCall(module_->getFunction("printf"), builder_->CreateGlobalStringPtr("***HEAP: creating new object\n"));
+        builder.CreateCall(module_->getFunction("printf"), builder.CreateGlobalStringPtr("***HEAP: creating new object\n"));
     }
 
     llvm::StructType* llStructTy = static_cast<llvm::StructType*>(llTy);
