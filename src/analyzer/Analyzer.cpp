@@ -529,6 +529,11 @@ void Analyzer::validate(ReturnStmt& node) {
 }
 
 void Analyzer::validate(Assignment& node) {
+    if (!currRoutine_) {
+        saveError("assignment in global scope is illegal", node.span);
+        return;
+    }
+    
     node.left->validate(*this);
     if (node.left->type->code == TypeEnum::Routine) {
         saveError("cannot assign to routine identifier", node.left->span);
@@ -596,9 +601,6 @@ void Analyzer::validate(Assignment& node) {
         invalidateKnownVarByRef(lhs);
     else if (res == Optimizer::AssignmentOptStatus::Fail) {
         invalidateKnownVarByRef(lhs);
-        if (!currRoutine_) {
-            saveError("non-compile-time evaluated assignment in global scope is illegal", node.span);
-        }
     } else
         return;
 

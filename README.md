@@ -25,6 +25,3 @@ Will output Parser's AST contents
 - **Bold red IdRef, RoutineCall, TypeRef** - any structs that have a **.ref** field, they are printed as bright red when the ref field is null (**should never happen if Analyzer has already run**)
 
 ![AST_DEBUG_ON example](docs/images/AST_DEBUG_ON_example.png)
-
-## Notes
-- Assignment in global scope is only legal if it can be elided at compile time (permitted because there is no array/record init syntax)
