@@ -49,7 +49,7 @@ int Lexer::configure(int* argc, char** argv) {
             // Messages
             std::string_view option = arg.substr(3);
             if ('V' == option.at(0)) {
-                logVerbosity_ = std::clamp(std::atoi(option.substr(1).data()), 0, 2);
+                config_.logVerbosity = std::clamp(std::atoi(option.substr(1).data()), 0, 2);
             } else {
                 std::cerr << "Unrecognized lx option: " << option << "\n";
                 return 1;

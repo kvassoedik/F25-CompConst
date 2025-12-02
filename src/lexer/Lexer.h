@@ -32,7 +32,7 @@ private:
     void move(unsigned long step) noexcept;
     unsigned long currTkLen() const noexcept { return pos_ - currTkStart_; }
 
-    bool canLog(int verbosityLevel) const noexcept { return verbosityLevel <= logVerbosity_; }
+    bool canLog(int verbosityLevel) const noexcept { return verbosityLevel <= config_.logVerbosity; }
     void saveError(std::string reason);
 private:
     std::shared_ptr<FileReader> file_;
@@ -40,9 +40,9 @@ private:
     std::vector<CompileMsg> msgs_;
     unsigned long pos_{0}, lineNum_{1}, currTkStart_{0};
 
-    // Flags
-    int logVerbosity_{0};
-    //
+    struct {
+        int logVerbosity{0};
+    } config_;
 
     struct {
         bool eof = false;
