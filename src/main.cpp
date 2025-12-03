@@ -67,14 +67,7 @@ int main(int argc, char **argv) {
     if (codegen.configure(&argc, argv) != 0)
         return 3;
 
-    // Lexer stage
-    std::vector<std::shared_ptr<Tokens::BaseTk>> tokens;
-    try {
-        tokens = std::move(lexer.run());
-    } catch(std::runtime_error e) {
-        std::cerr << "------ UNEXPECTED EXCEPTION scanning file (lx): " << fileName << "\n" << e.what() << "\n";
-        return 4;
-    }
+    std::vector<std::shared_ptr<Tokens::BaseTk>> tokens = lexer.run();
     if (lexer.hasErrors())
         return 5;
 
@@ -87,7 +80,7 @@ int main(int argc, char **argv) {
     if (!tokens.empty() && tokens[tokens.size() - 1]->type == TokenType::END_OF_FILE)
         tokens.pop_back();
 
-    parser.feed(TokenList(std::move(tokens)));
+    parser.feed(TokenList{std::move(tokens)});
     parser.run();
     if (parser.hasErrors())
         return 5;
@@ -99,6 +92,5 @@ int main(int argc, char **argv) {
     ast::debugInfo.printAll();
 #endif
 
-    // std::cout << "\n" << ANSI_START ANSI_GREEN ANSI_APPLY << std::string(28, '-') << " LLVM DUMP " << std::string(28, '-') << ANSI_RESET << "\n\n";
     codegen.run();
 }

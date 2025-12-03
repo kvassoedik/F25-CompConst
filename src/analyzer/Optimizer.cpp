@@ -62,7 +62,7 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
 (_node_->code == ExprEnum::IntLiteral ? static_cast<IntLiteral&>(*_node_).val : static_cast<RealLiteral&>(*_node_).val)
 // -----------------------------------------------------
 
-    if (isErrorType(expr.type) || !config_.toggles.computations)
+    if (isErrorType(*expr.type) || !config_.toggles.computations)
         return nullptr;
 
     struct NumericBinaryOperation {
@@ -74,7 +74,7 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
         auto left = e.left->knownPrimitive ? e.left : computeExpr(*e.left);
         auto right = e.right->knownPrimitive ? e.right : computeExpr(*e.right);
         if (left && right) {
-            if (e.type->code == TypeEnum::Int) {
+            if (getPureType(*e.type).code == TypeEnum::Int) {
                 auto res = ast_->mk<IntLiteral>(e.span, operation.integer(left, right));
 #if AST_DEBUG_ON
                 res->debug_optimized = true;
@@ -114,7 +114,7 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
         auto right = e.right->knownPrimitive ? e.right : computeExpr(*e.right);
         if (left && right) {
             auto res = ast_->mk<BoolLiteral>(e.span,
-                e.type->code == TypeEnum::Int
+                getPureType(*e.type).code == TypeEnum::Int
                     ? operation.integer(left, right)
                     : operation.real(left, right)
             );
@@ -169,7 +169,7 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
     };
 
     auto areValuesEqual = [](BinaryExpr& e, shared_ptr<Expr> left, shared_ptr<Expr> right) {
-        switch (e.type->code) {
+        switch (getPureType(*e.type).code) {
         case TypeEnum::Bool: {
             return static_cast<BoolLiteral&>(*left).val == static_cast<BoolLiteral&>(*right).val;
         }
@@ -181,7 +181,7 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
         }
         default:
             throw std::runtime_error(
-                "Optimizer::computeExpr: unsupported compile-time equality type check: " + stringifyType(e.type)
+                "Optimizer::computeExpr: unsupported compile-time equality type check: " + stringifyType(*e.type)
             );
         }
     };
@@ -232,7 +232,7 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
         if (!opt)
             break;
 
-        if (opt->type->code == TypeEnum::Int) {
+        if (getPureType(*opt->type).code == TypeEnum::Int) {
             auto res = ast_->mk<IntLiteral>(e.span, -INT_REAL_CASE(opt));
 #if AST_DEBUG_ON
             res->debug_optimized = true;
@@ -369,7 +369,7 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
         auto right = e.right->knownPrimitive ? e.right : computeExpr(*e.right);
         if (left && right) {
             if (config_.logs.computations) {
-                if (e.type->code == TypeEnum::Bool)
+                if (getPureType(*e.type).code == TypeEnum::Bool)
                     log({"computing " + std::string(boolToStr(static_cast<BoolLiteral&>(*left).val))
                         + " == " + boolToStr(static_cast<BoolLiteral&>(*right).val), e.span});
                 else
@@ -400,7 +400,7 @@ shared_ptr<Expr> Optimizer::computeExpr(Expr& expr) {
         auto right = e.right->knownPrimitive ? e.right : computeExpr(*e.right);
         if (left && right) {
             if (config_.logs.computations) {
-                if (e.type->code == TypeEnum::Bool)
+                if (getPureType(*e.type).code == TypeEnum::Bool)
                     log({"computing " + std::string(boolToStr(static_cast<BoolLiteral&>(*left).val))
                         + " /= " + boolToStr(static_cast<BoolLiteral&>(*right).val), e.span});
                 else

@@ -23,6 +23,9 @@ public:
 #if AST_DEBUG_ON
     unsigned long debugId{0};
 #endif
+
+protected:
+    bool validated_{false};
 };
 
 }

@@ -52,9 +52,9 @@ private:
     void convertToDouble(llvm::Value*& llVal);
     void codegenBlock(const ast::Block& node, bool isFunctionEntry);
 
-    llvm::Value* newHeapObject(const ast::Type& type, llvm::Type* llTy, llvm::IRBuilder<>& builder);
+    llvm::Value* newHeapObject(const ast::Type& t, llvm::Type* llTy, llvm::IRBuilder<>& builder);
     void heapObjUseCountInc(llvm::Value* llPtr);
-    void heapObjUseCountDecr(llvm::Value* llPtr, const ast::Type& type);
+    void heapObjUseCountDecr(llvm::Value* llPtr, const ast::Type& t);
     void heapObjDestroy(llvm::Value* llPtr);
     llvm::Value* codegenPrimaryPtr(const ast::Entity& node);
 private:

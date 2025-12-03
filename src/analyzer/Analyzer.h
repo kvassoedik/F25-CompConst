@@ -8,7 +8,7 @@
 #define AST_VALIDATE_METHOD_SIGNATURE \
 void validate(::analyzer::Analyzer& analyzer)
 #define AST_VALIDATE_METHOD \
-void validate(::analyzer::Analyzer& analyzer) final override { analyzer.validate(*this); }
+void validate(::analyzer::Analyzer& analyzer) final override { if (!validated_) { validated_ = true; analyzer.validate(*this); } }
 
 namespace analyzer {
 
@@ -47,7 +47,6 @@ private:
     void invalidateKnownVarsInCurrBlock();
     void invalidateKnownVarByRef(ast::IdRef& node);
     void saveError(std::string reason, Tokens::Span span);
-    void validateType(std::shared_ptr<ast::Type>& t);
     bool isInGlobalScope() const noexcept { return currBlock_ == ast_->getRoot().get(); }
 private:
     std::shared_ptr<FileReader> file_;
