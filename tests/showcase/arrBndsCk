@@ -1,0 +1,8 @@
+routine foo(a: array[] integer) is
+    a[3] := 1
+end
+
+routine main() is
+    var a: array[3] integer
+    a[3] := 1
+end

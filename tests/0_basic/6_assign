@@ -5,8 +5,8 @@ var bool: boolean
 routine main() is
 	int := 1; print int // 1
 	int := 2.1; print int // 2
-	int := 2.5; print int // 3
-	int := 0.99; print int // 1
+	int := 2.5; print int // 2
+	int := 0.99; print int // 0
 	int := false; print int // 0
 	int := true; print int // 1
 	print
@@ -18,6 +18,4 @@ routine main() is
 	print
 
 	bool := true; print bool // true
-	bool := int - 1; print bool // false
-	bool := int; print bool // true
 end

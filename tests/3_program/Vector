@@ -1,6 +1,5 @@
 type Vector is record
-    var size: integer is 0
-    var reserved: integer is 2
+    var size: integer
     var arr: array[2] integer
 end
 
@@ -14,27 +13,28 @@ routine main() is
     print push(v, 25) // false
     print
     print pop(v) // true
-    for i in v loop print v.arr[i] end // 10 0
+    for i in 0..v.arr.size-1 loop print v.arr[i]; end // 10 0
     print pop(v) // true
     print pop(v) // false
 end
 
-routine push(v: Vector, val: integer): boolean is
-    if v.size + 1 > v.reserved then
+routine push(vect: Vector, val: integer): boolean is
+    if vect.size >= vect.arr.size then
         return false
     end
-    v.size = v.size + 1
-    v.arr[v.size] := val
+
+    vect.arr[vect.size] := val
+    vect.size := vect.size + 1
 
     return true
 end
 
-routine pop(v: Vector): boolean is
-    if v.size = 0 then
+routine pop(vect: Vector): boolean is
+    if vect.size = 0 then
         return false
     end
-    v.size = v.size - 1
-    v.arr[v.size] := 0
+    vect.size := vect.size - 1
+    vect.arr[vect.size] := 0
 
     return true
 end

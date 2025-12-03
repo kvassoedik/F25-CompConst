@@ -1,8 +1,9 @@
 type my_type123 is integer
 var x: my_type123
 
-var b is x = x
+var b: boolean
 
 routine main() is
+	b := x = x
 	print b
 end

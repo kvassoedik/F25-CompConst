@@ -4,6 +4,5 @@ var z is -x
 
 // Primary on integers
 routine main() is
-    // var z is -x
     print x,z // 10 -10
 end

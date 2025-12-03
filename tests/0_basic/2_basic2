@@ -1,8 +1,10 @@
-var x: integer is 2; var y1y:boolean  is  true//comment
- var my_variable is   5
-//              another comment
-//print x
-  var z: boolean is y1y;print/*I am a comment!*/z;routine main() is
-print z = y1y;print; print z
-/*print z*//* yet another comment  123 234*/end
-/*Almost nested //*comment*/var h is 1
+routine main() is
+  var x: integer is 2; var y1y:boolean  is  true//comment
+  var my_variable is   5
+  //              another comment
+  //print x
+    var z: boolean is y1y;print/*I am a comment!*/z;
+  print z = y1y;print; print z
+  /*print z*//* yet another comment  123 234*/
+  /*Almost nested //*comment*/var h is 1
+end

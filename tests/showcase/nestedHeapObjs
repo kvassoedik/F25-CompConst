@@ -3,4 +3,5 @@ type ComplexArray is array[2] SimpleRecord
 
 routine main() is
     var arr: ComplexArray
+    print 0
 end

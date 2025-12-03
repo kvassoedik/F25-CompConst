@@ -6,10 +6,8 @@ routine main() is
     print .00005 > .0 // true
     print .0 = 0. // true
 
-
     var x is 0.1
     var y is .10
-
     print x // 0.1
     print 62-y // 69.9
 end

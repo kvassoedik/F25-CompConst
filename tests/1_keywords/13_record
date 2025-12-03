@@ -1,7 +1,6 @@
 var x: record var num: integer ; var bool: boolean end
 
 routine main() is
-/*
     x.num := x.num - 1
     x.bool := true xor false
 
@@ -11,12 +10,11 @@ routine main() is
     print (x.bool and true) or false // true
     print x.bool = false // false
 
-*/
     type House is record
 		var a: integer
         var b: real
     end
-/*
+
     var h: House
     h.a := 1.99
     h.b := 2
@@ -25,7 +23,7 @@ routine main() is
     print h.b // 2.0
     h.b := h.a
     print h.b // 1.0
-*/
+
     // Nested records
     var r: record
         var r2: record

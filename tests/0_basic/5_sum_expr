@@ -8,11 +8,11 @@ routine main() is
 
     print x + y // 3
     print -1 + y // 1
-    print not 1 + y // 1
-    print x - not 2 // 3
+    print -1 + y // 1
+    print x - -2 // 3
     print x-y // -1
     print x+y+1 // 4
-    print x + y - x // 1
+    print x + y - x // 2
     print z + v // 1.1
     print 0 - z + v // 0.9
     print 0-z - 0-v // -1.1

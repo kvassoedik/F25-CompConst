@@ -1,0 +1,12 @@
+type SimpleRecord is record var num: integer end
+
+routine main() is
+    var obj: SimpleRecord
+
+    if obj.num = 0 then
+        print 123
+        return
+    end
+
+    print 456
+end
