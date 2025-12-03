@@ -32,6 +32,7 @@ public:
 enum class TypeEnum {
     ERROR,
     REFERENCE,
+    NONE,
 
     Int,
     Real,
@@ -372,14 +373,16 @@ public:
 
 struct RoutineType final : public Type {
     RoutineType(const Ast& ast, Tokens::Span span)
-        : Type(ast, span, TypeEnum::Routine) {}
+        : Type(ast, span, TypeEnum::Routine) {
+            retType = ast.getBaseTypes().none;
+        }
 
     AST_DEBUGTREE_PRINT_METHOD
     AST_SRLZTYPE_METHOD
     CODEGEN_TYPE_METHOD
 public:
     std::vector<std::shared_ptr<Var>> params;
-    std::shared_ptr<Type> retType{nullptr};
+    std::shared_ptr<Type> retType;
 };
 
 /************************************ Array ************************************/

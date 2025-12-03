@@ -31,7 +31,7 @@ public:
 
 private:
     struct BaseTypes {
-        std::shared_ptr<Type> error, boolean, integer, real;
+        std::shared_ptr<Type> error, none, boolean, integer, real;
     } baseTypes_;
 
     struct DefaultInitializers {

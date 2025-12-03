@@ -9,6 +9,7 @@ void srlz::type(const Type& node, options o) {
     std::string output;
     switch(node.code) {
         case TypeEnum::ERROR: {output = "<error>"; break;}
+        case TypeEnum::NONE: {output = "<none>"; break;}
         case TypeEnum::Int: {output = "integer"; break;}
         case TypeEnum::Real: {output = "real"; break;}
         case TypeEnum::Bool: {output = "boolean"; break;}

@@ -31,12 +31,6 @@ Codegen::Codegen(std::shared_ptr<ast::Ast> ast)
                                                        "arr_obj");
 }
 
-static bool systemToolExists(const std::string &tool)
-{
-    std::string cmd = tool + " --version 2>/dev/null";
-    return system(cmd.c_str()) == 0;
-}
-
 int Codegen::configure(int *argc, char **argv)
 {
     bool nextIsOutputFileName = false;
@@ -85,17 +79,6 @@ int Codegen::configure(int *argc, char **argv)
 
     if (config_.buildIntoExe)
     {
-        if (!systemToolExists("gcc"))
-        {
-            std::cerr << "gcc not found on computer. Please, install it to be able to compile into an executable\n";
-            return 1;
-        }
-        if (!systemToolExists("llc"))
-        {
-            std::cerr << "llc not found on computer. Please, install it to be able to compile into an executable\n";
-            return 1;
-        }
-
         if (config_.outputFileName.empty())
             config_.outputFileName = "a.out";
     }
@@ -608,16 +591,15 @@ llvm::Value *Codegen::gen(const ast::WhileStmt &node)
 
 llvm::Value *Codegen::gen(const ast::ReturnStmt &node)
 {
+    llvm::Value *llRetVal;
+    bool isRetValPrimitiveType;
     if (isMainRoutine_)
     {
-        llvm::APInt llRetValInt(32, 0, true);
-        builder_->CreateRet(llvm::ConstantInt::get(*context_, llRetValInt));
+        llRetVal = nullptr;
+        isRetValPrimitiveType = true;
     }
     else
     {
-        llvm::Value *llRetVal;
-        bool isRetValPrimitiveType;
-
         if (node.val)
         {
             isRetValPrimitiveType = analyzer::isPrimitiveType(analyzer::getPureType(*node.val->type));
@@ -631,68 +613,76 @@ llvm::Value *Codegen::gen(const ast::ReturnStmt &node)
                 llRetVal = codegenPrimaryPtr(*node.val);
             }
         }
+    }
 
-        bool hasHeapObjs = false;
+    bool hasHeapObjs = false;
+    for (auto it = blockStack_.rbegin(); it != blockStack_.rend(); ++it)
+    {
+        if (!it->heapObjs.empty()
+            // edge-case: if it's the value we return, we don't decrement its refc, and thus we don't need to create the branch
+            && (it != blockStack_.rbegin() || it->heapObjs.size() > 1 || it->heapObjs.back().llPtr != llRetVal))
+        {
+            hasHeapObjs = true;
+            break;
+        }
+        if (it->isFunction)
+            break;
+    }
+    if (hasHeapObjs)
+    {
+        // Calling refc_dcr on all objects in the current scope of the function
+        llvm::Function *llParentFn = builder_->GetInsertBlock()->getParent();
+        BasicBlock *llClosingBlk = BasicBlock::Create(*context_, "return_destructor", llParentFn);
+        builder_->CreateBr(llClosingBlk);
+        builder_->SetInsertPoint(llClosingBlk);
+
+        if (config_.printHeapManagement)
+        {
+            builder_->CreateCall(module_->getFunction("printf"), builder_->CreateGlobalStringPtr("HEAP: calling return destructor...\n"));
+        }
+
+        // Call decrement on all heap objects created in this block AND ones above AS LONG AS the blocks belong to this function
         for (auto it = blockStack_.rbegin(); it != blockStack_.rend(); ++it)
         {
-            if (!it->heapObjs.empty()
-                // edge-case: if it's the value we return, we don't decrement its refc, and thus we don't need to create the branch
-                && (it != blockStack_.rbegin() || it->heapObjs.size() > 1 || it->heapObjs.back().llPtr != llRetVal))
+            for (auto &heapObj : it->heapObjs)
             {
-                hasHeapObjs = true;
-                break;
+                // Don't decrement the refc of the object being returned
+                if (heapObj.llPtr != llRetVal)
+                {
+                    llvm::Value *llDeref = builder_->CreateLoad(globalTys_.heapObj->getPointerTo(), heapObj.llPtr);
+
+                    heapObjUseCountDecr(llDeref, heapObj.type);
+                }
             }
             if (it->isFunction)
                 break;
         }
-        if (hasHeapObjs)
+
+        BasicBlock *llBackBlk = BasicBlock::Create(*context_, "back", llParentFn);
+        builder_->CreateBr(llBackBlk);
+        builder_->SetInsertPoint(llBackBlk);
+
+        // clear just in case there are unexpected statements after the return stmt (bug of Analyzer)
+        // to not emit a double free at the end of this block
+        blockStack_.back().heapObjs.clear();
+    }
+    std::cerr << "closeRRR\n";
+    if (node.val)
+    {
+        if (!isRetValPrimitiveType)
         {
-            // Calling refc_dcr on all objects in the current scope of the function
-            llvm::Function *llParentFn = builder_->GetInsertBlock()->getParent();
-            BasicBlock *llClosingBlk = BasicBlock::Create(*context_, "return_destructor", llParentFn);
-            builder_->CreateBr(llClosingBlk);
-            builder_->SetInsertPoint(llClosingBlk);
-
-            if (config_.printHeapManagement)
-            {
-                builder_->CreateCall(module_->getFunction("printf"), builder_->CreateGlobalStringPtr("HEAP: calling return destructor...\n"));
-            }
-
-            // Call decrement on all heap objects created in this block AND ones above AS LONG AS the blocks belong to this function
-            for (auto it = blockStack_.rbegin(); it != blockStack_.rend(); ++it)
-            {
-                for (auto &heapObj : it->heapObjs)
-                {
-                    // Don't decrement the refc of the object being returned
-                    if (heapObj.llPtr != llRetVal)
-                    {
-                        llvm::Value *llDeref = builder_->CreateLoad(globalTys_.heapObj->getPointerTo(), heapObj.llPtr);
-
-                        heapObjUseCountDecr(llDeref, heapObj.type);
-                    }
-                }
-                if (it->isFunction)
-                    break;
-            }
-
-            BasicBlock *llBackBlk = BasicBlock::Create(*context_, "back", llParentFn);
-            builder_->CreateBr(llBackBlk);
-            builder_->SetInsertPoint(llBackBlk);
-
-            // clear just in case there are unexpected statements after the return stmt (bug of Analyzer)
-            // to not emit a double free at the end of this block
-            blockStack_.back().heapObjs.clear();
+            llvm::Type *llRetTy = getType(*node.val->type)->getPointerTo();
+            llRetVal = builder_->CreateLoad(llRetTy, llRetVal);
         }
-        std::cerr << "closeRRR\n";
-        if (node.val)
+        std::cerr << "ALMOST RETURN\n";
+        builder_->CreateRet(llRetVal);
+    }
+    else
+    {
+        if (isMainRoutine_)
         {
-            if (!isRetValPrimitiveType)
-            {
-                llvm::Type *llRetTy = getType(*node.val->type)->getPointerTo();
-                llRetVal = builder_->CreateLoad(llRetTy, llRetVal);
-            }
-            std::cerr << "ALMOST RETURN\n";
-            builder_->CreateRet(llRetVal);
+            llvm::APInt llRetValInt(32 /* bitSize */, 0, true /* signed */);
+            builder_->CreateRet(llvm::ConstantInt::get(*context_, llRetValInt));
         }
         else
         {
@@ -886,8 +876,14 @@ llvm::Value *Codegen::gen(const ast::UnaryExpr &node)
 
     switch (node.code)
     {
-    case ExprEnum::Negate:
-        return builder_->CreateNeg(llVal, "neg");
+    case ExprEnum::Negate: {
+        if (analyzer::getPureType(*node.type).code == TypeEnum::Real)
+            return builder_->CreateFNeg(llVal, "fneg");
+        else if (analyzer::getPureType(*node.type).code == TypeEnum::Int)
+            return builder_->CreateNeg(llVal, "neg");
+        else
+            llvm_unreachable("gen UnaryExpr: unexpected type code");
+    }
     case ExprEnum::Not:
         return builder_->CreateNot(llVal, "not");
     }
@@ -1146,6 +1142,8 @@ llvm::Type *Codegen::genType(const ast::Type &node)
 {
     switch (analyzer::getPureType(node).code)
     {
+    case TypeEnum::NONE:
+        return llvm::Type::getVoidTy(*context_);
     case TypeEnum::Bool:
         return llvm::Type::getInt1Ty(*context_);
     case TypeEnum::Int:
@@ -1509,18 +1507,10 @@ llvm::FunctionType *Codegen::genRoutineType(const ast::RoutineType &node)
         llParamTy.push_back(llTy);
     }
     std::cerr << "gen ret yt\n";
-    llvm::Type *llRetTy;
-    if (node.retType)
+    llvm::Type *llRetTy = getType(*node.retType);
+    if (!analyzer::isPrimitiveType(analyzer::getPureType(*node.retType)))
     {
-        llRetTy = getType(*node.retType);
-        if (!analyzer::isPrimitiveType(analyzer::getPureType(*node.retType)))
-        {
-            llRetTy = llRetTy->getPointerTo();
-        }
-    }
-    else
-    {
-        llRetTy = llvm::Type::getVoidTy(*context_);
+        llRetTy = llRetTy->getPointerTo();
     }
     std::cerr << "gened routine type\n";
     return llvm::FunctionType::get(llRetTy, llParamTy, false /* isVarArgs */);

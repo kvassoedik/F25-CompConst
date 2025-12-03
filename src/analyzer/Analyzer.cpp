@@ -32,7 +32,7 @@ void Analyzer::run() {
             saveError("'main' must be a routine", it->second->span);
             return;
         }
-        if (static_cast<RoutineType&>(*it->second->type).retType) {
+        if (static_cast<RoutineType&>(*it->second->type).retType->code != TypeEnum::NONE) {
             saveError("'main' routine cannot return anything", it->second->span);
             return;
         }
@@ -533,7 +533,7 @@ void Analyzer::validate(ReturnStmt& node) {
 
         node.val->isNamed = true;
     } else {
-        if (currRoutine_->getType()->retType) {
+        if (currRoutine_->getType()->retType->code != TypeEnum::NONE) {
             saveError(
                 "in routine " + std::string(ANSI_START ANSI_BOLD ANSI_APPLY) + currRoutine_->id
                 + ANSI_RESET + ": no value returned, but return type is " + ANSI_START ANSI_BOLD ANSI_APPLY
@@ -702,17 +702,12 @@ void Analyzer::validate(Routine& node) {
         return;
     }
 
-    {
-        auto& retType = node.getType()->retType;
-        if (retType)
-            retType->validate(*this);
-
-        analyzingRoutineParams_ = true;
-        for (auto& param: node.getType()->params) {
-            param->type->validate(*this);
-        }
-        analyzingRoutineParams_ = false;
+    node.getType()->retType->validate(*this);
+    analyzingRoutineParams_ = true;
+    for (auto& param: node.getType()->params) {
+        param->type->validate(*this);
     }
+    analyzingRoutineParams_ = false;
 
     auto it = currBlock_->declMap.find(node.id);
     if (it == currBlock_->declMap.end())

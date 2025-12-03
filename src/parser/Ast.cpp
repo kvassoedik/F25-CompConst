@@ -6,6 +6,7 @@ using namespace ast;
 Ast::Ast() {
     auto nullSpan = Tokens::Span{1,0,0};
     baseTypes_.error = mk<Type>(nullSpan, TypeEnum::ERROR);
+    baseTypes_.none = mk<Type>(nullSpan, TypeEnum::NONE);
     baseTypes_.boolean = mk<Type>(nullSpan, TypeEnum::Bool);
     baseTypes_.integer = mk<Type>(nullSpan, TypeEnum::Int);
     baseTypes_.real = mk<Type>(nullSpan, TypeEnum::Real);

@@ -6,7 +6,7 @@
 using namespace ast;
 
 bool analyzer::isPrimitiveType(const ast::Type& t) {
-    return t.code == TypeEnum::Bool || t.code == TypeEnum::Int || t.code == TypeEnum::Real;
+    return t.code != TypeEnum::Array && t.code != TypeEnum::Record;
 }
 
 ast::Type& analyzer::getPureType(ast::Type& t) {
@@ -34,6 +34,7 @@ bool analyzer::areTypesEqual(Type& ty1, Type& ty2) {
         return false;
 
     switch (t1.code) {
+    case TypeEnum::NONE:
     case TypeEnum::Bool:
     case TypeEnum::Int:
     case TypeEnum::Real: return true;
@@ -55,7 +56,6 @@ bool analyzer::areTypesEqual(Type& ty1, Type& ty2) {
     case TypeEnum::Record: {
         const auto &at1 = static_cast<RecordType&>(t1), &at2 = static_cast<RecordType&>(t2);
         if (at1.members.size() != at2.members.size()) {
-            std::cerr << at1.members.size() << " " << at2.members.size() << "\n";
             return false;
         }
 
@@ -75,19 +75,13 @@ bool analyzer::areTypesEqual(Type& ty1, Type& ty2) {
                 return false;
         }
 
-        if (!at1.retType)
-            if (!at2.retType) return true;
-            else return false;
-        if (!at2.retType)
-            if (!at1.retType) return true;
-            else return false;
         if (!areTypesEqual(*at1.retType, *at2.retType))
             return false;
 
         return true;
     }
     }
-    
+
     return false;
 }
 

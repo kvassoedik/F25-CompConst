@@ -60,7 +60,7 @@ void DebugTree::printAll() {
         if (alreadyDisplayed_.find(i) != alreadyDisplayed_.end())
             continue;
 
-        if (!isCurrOrphan_ && i > 8) {
+        if (!isCurrOrphan_ && i > 9) {
             isCurrOrphan_ = true;
             std::cerr << "\n" << ANSI_START ANSI_GREEN ANSI_APPLY << std::string(14, '-') << " ORPHAN NODES " << std::string(14, '-') << ANSI_RESET "\n";
         }
