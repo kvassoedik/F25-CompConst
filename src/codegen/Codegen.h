@@ -44,6 +44,7 @@ private:
     void setupMainEntryPoint();
     void genGlobalVars();
     void genRoutines();
+    void build();
     void dump();
 
     llvm::Type* getType(const ast::Type& node);
@@ -100,7 +101,9 @@ private:
     bool isMainRoutine_{false};
     bool getVarPtr_{false};
     struct {
+        std::string outputFileName;
         bool printHeapManagement{false};
+        bool buildIntoExe{false};
     } config_;
 };
 }

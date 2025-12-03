@@ -23,6 +23,7 @@ add_library(${LIB_NAME}
     ${CMAKE_SOURCE_DIR}/analyzer/Optimizer.cpp
     ${CMAKE_SOURCE_DIR}/analyzer/utils.cpp
     ${CMAKE_SOURCE_DIR}/codegen/Codegen.cpp
+    ${CMAKE_SOURCE_DIR}/codegen/build.cpp
 )
 
 target_link_libraries(${LIB_NAME} llvm-core::llvm-core)

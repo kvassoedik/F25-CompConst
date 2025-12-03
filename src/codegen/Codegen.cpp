@@ -31,11 +31,25 @@ Codegen::Codegen(std::shared_ptr<ast::Ast> ast)
                                                        "arr_obj");
 }
 
+static bool systemToolExists(const std::string &tool)
+{
+    std::string cmd = tool + " --version 2>/dev/null";
+    return system(cmd.c_str()) == 0;
+}
+
 int Codegen::configure(int *argc, char **argv)
 {
+    bool nextIsOutputFileName = false;
     for (int i = 1; i < *argc - 1; ++i)
     {
         std::string_view arg(argv[i]);
+
+        if (nextIsOutputFileName)
+        {
+            config_.outputFileName = arg;
+            nextIsOutputFileName = false;
+            continue;
+        }
 
         if (arg.size() > 1 &&
             "-G" == arg.substr(0, 2))
@@ -46,13 +60,51 @@ int Codegen::configure(int *argc, char **argv)
             {
                 config_.printHeapManagement = true;
             }
+            else if ("b" == option)
+            {
+                config_.buildIntoExe = true;
+            }
             else
             {
                 std::cerr << "Unrecognized -G option: " << option << "\n";
                 return 1;
             }
         }
+        else if (arg.size() > 1 &&
+                 "-o" == arg.substr(0, 2))
+        {
+            nextIsOutputFileName = true;
+        }
     }
+
+    if (nextIsOutputFileName)
+    {
+        std::cerr << "Expected a filename after -o\n";
+        return 1;
+    }
+
+    if (config_.buildIntoExe)
+    {
+        if (!systemToolExists("gcc"))
+        {
+            std::cerr << "gcc not found on computer. Please, install it to be able to compile into an executable\n";
+            return 1;
+        }
+        if (!systemToolExists("llc"))
+        {
+            std::cerr << "llc not found on computer. Please, install it to be able to compile into an executable\n";
+            return 1;
+        }
+
+        if (config_.outputFileName.empty())
+            config_.outputFileName = "a.out";
+    }
+    else
+    {
+        if (config_.outputFileName.empty())
+            config_.outputFileName = "dump.ll";
+    }
+
     return 0;
 }
 
@@ -63,7 +115,7 @@ void Codegen::run()
     setupMainEntryPoint();
     genGlobalVars();
     genRoutines();
-    dump();
+    build();
 }
 
 // ----------------------------------- gen -------------------------------------
@@ -1037,7 +1089,7 @@ llvm::Value *Codegen::gen(const ast::RoutineCall &node)
 
     llFn->dump();
     std::cerr << "CALLING\n";
-    for (auto& a: llArgs)
+    for (auto &a : llArgs)
         a->dump();
     llvm::Value *llCall = builder_->CreateCall(llFn, llArgs);
     std::cerr << "Call happened\n";
