@@ -13,7 +13,7 @@ int main(int argc, char **argv) {
     }
 
     // Proccess flags
-    for (int i = 1; i < argc-1; ++i) {
+    for (int i = 1; i < argc; ++i) {
         std::string_view arg(argv[i]);
 
         if ("-h" == arg) {
@@ -22,6 +22,7 @@ int main(int argc, char **argv) {
             "\n"
             "   options:\n"
             "       -h  - display help\n"
+            "       -o  - specify output filename\n"
             "       -lx - configure Lexer\n"
             "           V    - configure log verbosity level [0-2]\n"
             "       -O - configure Optimizer\n"
@@ -32,7 +33,8 @@ int main(int argc, char **argv) {
             "               comput (disable)\n"
             "               unused (disable)\n"
             "       -G - configure code Generation\n"
-            "           print-heap-management - emit code to print on heap-object-related events\n";
+            "           print-heap-management - emit code to print on heap-object-related events\n"
+            "           b                     - build into an executable with llc + gcc\n";
 
             return 0;
         }
