@@ -1,0 +1,29 @@
+type obj is record
+	var x: integer
+	var y: real
+end
+
+routine clone(o: obj): obj is
+	var new: obj
+	new.x := o.x
+	new.y := o.y
+
+	return new
+end
+
+routine func(o: obj): obj => o
+
+routine main() is
+	var o: obj
+	o.x := 6
+	o.y := 75.9
+
+	var o2 is clone(o)
+	print o2.x // 6
+	print o2.y // 75.9
+
+	o.x := 100
+	o2 := func(o2) // should not change refcount afterward (+1-1 = 0)
+	print func(o2).x // 6
+	print func(o).x // 100
+end

@@ -1,0 +1,9 @@
+routine main() is
+    var x is 0
+    x := 4
+    x := 10
+
+    if x = 10 then
+        print x + 1
+    end
+end

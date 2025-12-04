@@ -1,0 +1,40 @@
+type Vector is record
+    var size: integer
+    var arr: array[2] integer
+end
+
+routine push(v: Vector, val: integer): boolean
+routine pop(v: Vector): boolean
+
+routine main() is
+    var v: Vector
+    print push(v, 10) // true
+    print push(v, -15) // true
+    print push(v, 25) // false
+    print
+    print pop(v) // true
+    for i in 0..v.arr.size-1 loop print v.arr[i]; end // 10 0
+    print pop(v) // true
+    print pop(v) // false
+end
+
+routine push(vect: Vector, val: integer): boolean is
+    if vect.size >= vect.arr.size then
+        return false
+    end
+
+    vect.arr[vect.size] := val
+    vect.size := vect.size + 1
+
+    return true
+end
+
+routine pop(vect: Vector): boolean is
+    if vect.size = 0 then
+        return false
+    end
+    vect.size := vect.size - 1
+    vect.arr[vect.size] := 0
+
+    return true
+end
