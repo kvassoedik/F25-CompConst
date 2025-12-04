@@ -1,14 +1,7 @@
 ## Project init
-1. **Download LLVM pre-build binaries** at https://github.com/llvm/llvm-project/releases/tag/llvmorg-18.1.8
-2. Uncompress the file, name it `llvm` and put it in `external/`
-```bash
-cd ./external/
-wget https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz
-tar -xf clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz
-mv clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04 llvm
-rm -rf clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz
-cd ..
-```
+1. Install `conan2`
+2. `conan install src/` (optionally specify `--build=missing` if no prebuilt binary matches your profile)
+3. `make build`
 
 ## Compile options:
 ```bash
