@@ -249,7 +249,6 @@ void Analyzer::validate(RecordMember& node) {
 
     idRef_.currType = &(*it)->type;
     node.type = *idRef_.currType;
-    std::cerr << "ANALYZER: RecordMember " << node.id << " " << stringifyType(*node.type) << "\n";
     if (node.next) {
         idRef_.prev = &node;
         node.next->validate(*this);
@@ -258,17 +257,13 @@ void Analyzer::validate(RecordMember& node) {
 
 void Analyzer::validate(BinaryExpr& node) {
     auto& expr = static_cast<BinaryExpr&>(node);
-    std::cerr<<"binexpr 1\n";
     expr.left->validate(*this);
-    std::cerr<<"binexpr 2\n";
     expr.right->validate(*this);
 
-    std::cerr<<"binexpr\n";
     Type &leftType = getPureType(*expr.left->type), &rightType = getPureType(*node.right->type);
     if (isErrorType(leftType) || isErrorType(rightType))
         return;
 
-    std::cerr<<"switch binexpr\n";
     switch (node.code) {
     case ExprEnum::Add:
     case ExprEnum::Subtract:

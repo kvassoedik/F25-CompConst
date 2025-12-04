@@ -138,7 +138,6 @@ llvm::Value *Codegen::gen(const ast::Var &node)
                 llvm_unreachable("no blockStack entries (globalVar)");
             auto &blockInfo = blockStack_.back();
             blockInfo.heapObjs.emplace_back(llGlobalVar, *node.type);
-            std::cerr << "GLOBAL VAR ";
         }
 
         vars_.emplace(&node, VarMapping{llGlobalVar, nullptr});
@@ -160,16 +159,13 @@ llvm::Value *Codegen::gen(const ast::Var &node)
         }
         else
         {
-            std::cerr << "getPureType\n";
             ast::Type &type = analyzer::getPureType(*node.type);
             if (type.code != TypeEnum::Array && type.code != TypeEnum::Record)
                 llvm_unreachable("gen Var got a non-primitive type that is not Array nor Record");
 
-            std::cerr << "getType\n";
             llvm::Type *llTy = getType(*node.type);
             llVar = tmpBuilder.CreateAlloca(llTy->getPointerTo(), nullptr, node.id);
 
-            std::cerr << "nextstep\n";
             llvm::Value *llInitialzer;
             if (node.val)
             {
@@ -209,7 +205,6 @@ llvm::Value *Codegen::gen(const ast::Routine &node)
         llvm_unreachable("gen Routine got a routine with no body");
 
     isMainRoutine_ = (node.id == "main");
-    std::cerr << "routine\n";
     Function *llFn;
     if (isMainRoutine_)
     {
@@ -222,14 +217,12 @@ llvm::Value *Codegen::gen(const ast::Routine &node)
     }
     else
     {
-        std::cerr << "gentype\n";
         llvm::FunctionType *llFnTy = genRoutineType(*node.getType());
         llFn = llvm::Function::Create(llFnTy, llvm::Function::ExternalLinkage, node.id, module_.get());
 
         BasicBlock *llEntryBlk = BasicBlock::Create(*context_, "entry", llFn);
         builder_->SetInsertPoint(llEntryBlk);
     }
-    std::cerr << "parameteres\n";
 
     if (!isMainRoutine_)
         blockStack_.emplace_back(std::list<HeapObj>{}, true);
@@ -241,7 +234,6 @@ llvm::Value *Codegen::gen(const ast::Routine &node)
         llvm::Type *llParamTy = llFn->getFunctionType()->getParamType(paramNo);
         if (!analyzer::isPrimitiveType(analyzer::getPureType(*param->type)))
             llParamTy = llParamTy->getPointerTo();
-        std::cerr << "param\n";
         llvm::Value *llVar = builder_->CreateAlloca(llParamTy, nullptr, param->id);
         vars_.emplace(param.get(), VarMapping{llVar, llFn});
 
@@ -260,7 +252,6 @@ llvm::Value *Codegen::gen(const ast::Routine &node)
     }
 
     codegenBlock(*node.body, true);
-    std::cerr << "block genned\n";
     llvm::Instruction *last = !builder_->GetInsertBlock()->empty()
                                   ? &builder_->GetInsertBlock()->back()
                                   : nullptr;
@@ -277,9 +268,7 @@ llvm::Value *Codegen::gen(const ast::Routine &node)
         }
     }
     isMainRoutine_ = false;
-    std::cerr << "try verify\n";
     llvm::verifyFunction(*llFn);
-    std::cerr << "verified\n";
     return nullptr;
 }
 
@@ -293,11 +282,8 @@ llvm::Value *Codegen::gen(const ast::Assignment &node)
 {
     if (globalScope_)
         llvm_unreachable("non-elided at compile-time assignment in global scope is illegal");
-    std::cerr << "Assign left\n";
     llvm::Value *llLhsPtr = codegenPrimaryPtr(*node.left);
-    std::cerr << "Assign left done\n";
     ast::Type &leftType = analyzer::getPureType(*node.left->type);
-    std::cerr << "Assign right\n";
     llvm::Value *llRhs = node.val->codegen(*this);
     ast::Type &valType = analyzer::getPureType(*node.val->type);
 
@@ -352,7 +338,6 @@ llvm::Value *Codegen::gen(const ast::Assignment &node)
         llvm_unreachable("gen Assignment: unexpected lhs type code");
 
     builder_->CreateStore(llRhs, llLhsPtr);
-    std::cerr << "Assign done\n";
     return nullptr;
 }
 
@@ -423,9 +408,7 @@ llvm::Value *Codegen::gen(const ast::PrintStmt &node)
 
 llvm::Value *Codegen::gen(const ast::IfStmt &node)
 {
-    std::cerr << "cond\n";
     llvm::Value *llCond = node.condition->codegen(*this);
-    std::cerr << "condDONE\n";
     if (!llCond)
         llvm_unreachable("gen IfStmt: cond is null");
 
@@ -468,7 +451,6 @@ llvm::Value *Codegen::gen(const ast::IfStmt &node)
 
 llvm::Value *Codegen::gen(const ast::ForStmt &node)
 {
-    std::cerr << "for stmt\n";
     llvm::Function *llParentFn = builder_->GetInsertBlock()->getParent();
     llvm::BasicBlock *llLoopInitBlk = llvm::BasicBlock::Create(*context_, "loopinit", llParentFn);
     llvm::BasicBlock *llLoopBlk = llvm::BasicBlock::Create(*context_, "loop", llParentFn);
@@ -517,7 +499,6 @@ llvm::Value *Codegen::gen(const ast::ForStmt &node)
     builder_->CreateCondBr(llCond, llLoopInitBlk, llBrkBlk);
 
     builder_->SetInsertPoint(llLoopInitBlk);
-    std::cerr << "create alloca\n";
     llvm::Value *llVar = builder_->CreateAlloca(globalTys_.integer, nullptr, node.counter->id);
     vars_.emplace(node.counter.get(), VarMapping{llVar, llParentFn});
 
@@ -525,7 +506,6 @@ llvm::Value *Codegen::gen(const ast::ForStmt &node)
         builder_->CreateStore(llEnd, llVar);
     else
         builder_->CreateStore(llStart, llVar);
-    std::cerr << "init done\n";
     builder_->CreateBr(llLoopBodyBlk);
 
     builder_->SetInsertPoint(llLoopBlk);
@@ -666,7 +646,6 @@ llvm::Value *Codegen::gen(const ast::ReturnStmt &node)
         // to not emit a double free at the end of this block
         blockStack_.back().heapObjs.clear();
     }
-    std::cerr << "closeRRR\n";
     if (node.val)
     {
         if (!isRetValPrimitiveType)
@@ -674,7 +653,6 @@ llvm::Value *Codegen::gen(const ast::ReturnStmt &node)
             llvm::Type *llRetTy = getType(*node.val->type)->getPointerTo();
             llRetVal = builder_->CreateLoad(llRetTy, llRetVal);
         }
-        std::cerr << "ALMOST RETURN\n";
         builder_->CreateRet(llRetVal);
     }
     else
@@ -690,7 +668,6 @@ llvm::Value *Codegen::gen(const ast::ReturnStmt &node)
         }
     }
 
-    std::cerr << blockStack_.back().heapObjs.size() << " " << blockStack_.back().heapObjs.empty() << "\n";
     return nullptr;
 }
 
@@ -918,7 +895,6 @@ llvm::Value *Codegen::gen(const ast::IdRef &node)
         }
 
         // Get value
-        std::cerr << "get value type code: " << static_cast<int>(primaryType_->code) << "\n";
         llvm::Type *llDescendantTy = getType(*primaryType_);
         if (!analyzer::isPrimitiveType(analyzer::getPureType(*primaryType_)))
             llDescendantTy = llDescendantTy->getPointerTo();
@@ -941,7 +917,6 @@ llvm::Value *Codegen::gen(const ast::RecordMember &node)
         llvm_unreachable("Codegen RecordMember: rogue");
 
     ast::Type &prType = analyzer::getPureType(*primaryType_);
-    std::cerr << "PureType code: " << node.id << " " << static_cast<int>(prType.code) << "\n";
     if (prType.code != TypeEnum::Record)
     {
         if (prType.code == TypeEnum::Array && node.id == "size")
@@ -949,7 +924,6 @@ llvm::Value *Codegen::gen(const ast::RecordMember &node)
             auto it = typeArrayHashMap_.find(llPrimaryTy_);
             if (it == typeArrayHashMap_.end())
                 llvm_unreachable("gen RecordMember: array type not in map");
-            std::cerr << "DUMPFDFDF\n";
 
             llvm::ArrayType *llArrayTy = it->second;
             llvm::Value *llSizeRttiPtr = builder_->CreateStructGEP(globalTys_.heapArrayObj, llPrimaryPtr_, 1);
@@ -961,9 +935,7 @@ llvm::Value *Codegen::gen(const ast::RecordMember &node)
         llvm_unreachable("Codegen RecordMember: parent type is not a record");
     }
 
-    std::cerr << "its a record " << analyzer::stringifyType(prType) << "\n";
     auto &members = static_cast<RecordType &>(prType).members;
-    std::cerr << "got members " << members.size() << "\n";
     size_t offset = 0;
     ast::Type *fieldType;
     for (auto &mem : members)
@@ -982,12 +954,10 @@ llvm::Value *Codegen::gen(const ast::RecordMember &node)
     // Return ptr to this field
     llvm::Value *llFieldPtr = builder_->CreateStructGEP(llPrimaryTy_, llPrimaryPtr_,
                                                         offset + 1 /* +1 to skip over ref_count */);
-    std::cerr << "written field\n";
     primaryType_ = fieldType;
 
     if (node.next)
     {
-        std::cerr << "next from RecordMember\n";
         llPrimaryTy_ = getType(*primaryType_);
         llPrimaryPtr_ = builder_->CreateLoad(llPrimaryTy_->getPointerTo(), llFieldPtr);
         return node.next->codegen(*this);
@@ -1010,7 +980,6 @@ llvm::Value *Codegen::gen(const ast::ArrayAccess &node)
     llvm::Value *prevPrimaryPtr{llPrimaryPtr_};
     llvm::Type *prevPrimaryTy_{llPrimaryTy_};
 
-    std::cerr << "get offse\n";
     llvm::Value *llOffset = node.val->codegen(*this);
     if (llOffset == nullptr)
         llvm_unreachable("gen ArrayAccess: val is null");
@@ -1023,19 +992,15 @@ llvm::Value *Codegen::gen(const ast::ArrayAccess &node)
 
     // truncate to i32
     llOffset = builder_->CreateTruncOrBitCast(llOffset, globalTys_.arraySize);
-    std::cerr << "get pure type change\n";
     primaryType_ = &analyzer::getPureType(*static_cast<ast::ArrayType &>(prType).elemType);
-    std::cerr << "changed\n";
 
     llvm::Value *llArrayBasePtr = builder_->CreateStructGEP(llPrimaryTy_, llPrimaryPtr_,
                                                             2 /* skip over meta info */
     );
-    std::cerr << "abb\n";
 
     auto it = typeArrayHashMap_.find(llPrimaryTy_);
     if (it == typeArrayHashMap_.end())
         llvm_unreachable("gen ArrayAccess: no array type inside hash map");
-    std::cerr << "abcsdsad\n";
 
     // Check in-bounds
     builder_->CreateCall(globals_.arr_bnds_ck, {llPrimaryPtr_, llOffset});
@@ -1046,11 +1011,9 @@ llvm::Value *Codegen::gen(const ast::ArrayAccess &node)
                                                      llvm::ConstantInt::get(*context_, llvm::APInt(32, 0)),
                                                      llOffset,
                                                  });
-    std::cerr << "check next\n";
 
     if (node.next)
     {
-        std::cerr << "node next ArrayAcces\n";
         llPrimaryTy_ = getType(*primaryType_);
         llvm::Value *llLoad = builder_->CreateLoad(llPrimaryTy_->getPointerTo(), llElemPtr);
         llPrimaryPtr_ = llLoad;
@@ -1083,12 +1046,7 @@ llvm::Value *Codegen::gen(const ast::RoutineCall &node)
     if (!llFn)
         llvm_unreachable("gen RoutineCall: no function found");
 
-    llFn->dump();
-    std::cerr << "CALLING\n";
-    for (auto &a : llArgs)
-        a->dump();
     llvm::Value *llCall = builder_->CreateCall(llFn, llArgs);
-    std::cerr << "Call happened\n";
     // If the expr is not set to a variable and it returns a heap object, defer its deletion to the end of the unit in Block
     if (!node.isNamed)
     {
@@ -1099,12 +1057,9 @@ llvm::Value *Codegen::gen(const ast::RoutineCall &node)
         const auto &retType = routineDecl->getType()->retType;
         if (retType && !analyzer::isPrimitiveType(analyzer::getPureType(*retType)))
         {
-            std::cerr << "emp;\n";
             tmpHeapObjects_.emplace_back(llCall, analyzer::getPureType(*retType));
         }
-        std::cerr << "nexte\n";
     }
-    std::cerr << "after tmps\n";
     if (node.next)
     {
         auto routineDecl = node.ref.lock();
@@ -1131,7 +1086,6 @@ llvm::Value *Codegen::gen(const ast::RoutineCall &node)
         llvm::Value *llLoad = builder_->CreateLoad(llMemberTy, llDescendantPtr);
         return llLoad;
     }
-    std::cerr << "Call return\n";
     return llCall;
 }
 
@@ -1174,13 +1128,11 @@ llvm::Type *Codegen::genType(const ast::ArrayType &node)
     {
         size = 0;
     }
-    std::cerr << "arr type\n";
     llvm::ArrayType *llArrayTy = llvm::ArrayType::get(llElemTy, size);
     llvm::Type *llTy = StructType::create({globalTys_.refcSize,
                                            globalTys_.arraySize,
                                            // static array itself
                                            llArrayTy});
-    std::cerr << "emplace\n";
     typeArrayHashMap_.emplace(llTy, llArrayTy);
     return llTy;
 }
@@ -1215,18 +1167,13 @@ llvm::Type *Codegen::getType(const ast::Type &node)
     std::stringstream ss;
     const ast::Type &pureType = analyzer::getPureType(node);
     pureType.serializeType({.os = ss, .ir = true});
-    std::cerr << "slrzed type: " << ss.str() << "\n";
     auto typeIt = typeHashMap_.find(ss.str());
     if (typeIt != typeHashMap_.end())
     {
-        std::cerr << "ret type\n";
         return typeIt->second;
     }
-    std::cerr << "codegenType\n";
     llvm::Type *llTy = pureType.codegenType(*this);
     typeHashMap_.emplace(std::move(ss).str(), llTy);
-    std::cerr << "done" << llTy << "\n";
-    std::cerr << "returning type\n";
     return llTy;
 }
 
@@ -1386,7 +1333,6 @@ void Codegen::genMetaFunctions()
         builder_->CreateRet(llvm::ConstantInt::get(llvm::Type::getInt1Ty(*context_), false));
     }
     /* arr_bnds_ck */
-    std::cerr << "init1\n";
     {
         llvm::FunctionType *llFnTy = llvm::FunctionType::get(
             llvm::Type::getVoidTy(*context_),
@@ -1498,21 +1444,16 @@ llvm::FunctionType *Codegen::genRoutineType(const ast::RoutineType &node)
 
     for (auto &param : node.params)
     {
-        std::cerr << "get param ty\n";
         llvm::Type *llTy = getType(*param->type);
-        std::cerr << "GOT?\n";
         if (!analyzer::isPrimitiveType(analyzer::getPureType(*param->type)))
             llTy = llTy->getPointerTo();
-        std::cerr << "param type\n";
         llParamTy.push_back(llTy);
     }
-    std::cerr << "gen ret yt\n";
     llvm::Type *llRetTy = getType(*node.retType);
     if (!analyzer::isPrimitiveType(analyzer::getPureType(*node.retType)))
     {
         llRetTy = llRetTy->getPointerTo();
     }
-    std::cerr << "gened routine type\n";
     return llvm::FunctionType::get(llRetTy, llParamTy, false /* isVarArgs */);
 }
 
@@ -1530,15 +1471,11 @@ void Codegen::codegenBlock(const ast::Block &node, bool isFunctionEntry)
     {
         // Add to the block stack for accounting creation of heap objects
         blockStack_.emplace_back(std::list<HeapObj>{}, false);
-        std::cerr << "push new BLOCKL\n";
     }
     BlockInfo &blockInfo = blockStack_.back();
-    std::cerr << "new Block " << blockStack_.size() << " : " << blockInfo.heapObjs.size() << "\n";
     for (auto &u : node.units)
     {
-        std::cerr << "unit " << u->span.line << " " << u->span.start << " " << u->span.end << "\n";
         u->codegen(*this);
-        std::cerr << "codegeneed\n";
         // Destroying temporarily-allocated heap objects after a statement has ended
         if (!tmpHeapObjects_.empty())
         {
@@ -1555,7 +1492,6 @@ void Codegen::codegenBlock(const ast::Block &node, bool isFunctionEntry)
 
             for (auto &heapObj : tmpHeapObjects_)
             {
-                std::cerr << "decr tmp heap obj\n";
                 heapObjUseCountDecr(heapObj.llPtr, heapObj.type);
 
                 // rm from heapObjs, since the count is already decremented right after the statement
@@ -1564,7 +1500,6 @@ void Codegen::codegenBlock(const ast::Block &node, bool isFunctionEntry)
                                        { return obj.llPtr == heapObj.llPtr; });
                 if (it != blockInfo.heapObjs.end())
                     blockInfo.heapObjs.erase(it);
-                std::cerr << "decr done\n";
             }
 
             builder_->CreateBr(llBackBlk);
@@ -1572,7 +1507,6 @@ void Codegen::codegenBlock(const ast::Block &node, bool isFunctionEntry)
             tmpHeapObjects_.clear();
         }
     }
-    std::cerr << blockInfo.heapObjs.size() << " " << blockInfo.heapObjs.empty() << " done with units\n";
     if (!blockInfo.heapObjs.empty())
     {
         llvm::Instruction *last = !builder_->GetInsertBlock()->empty()
@@ -1580,12 +1514,9 @@ void Codegen::codegenBlock(const ast::Block &node, bool isFunctionEntry)
                                       : nullptr;
         if (!last || !llvm::isa<llvm::ReturnInst>(last))
         {
-            std::cerr << "closing blk\n";
             BasicBlock *llClosingBlk = BasicBlock::Create(*context_, "destructor", llParentFn);
             builder_->CreateBr(llClosingBlk);
-            std::cerr << "ne1\n";
             builder_->SetInsertPoint(llClosingBlk);
-            std::cerr << blockInfo.heapObjs.size() << " size n2\n";
 
             if (config_.printHeapManagement)
             {
@@ -1595,19 +1526,14 @@ void Codegen::codegenBlock(const ast::Block &node, bool isFunctionEntry)
             // Call decrement on all heap objects created in this block
             for (auto &heapObj : blockInfo.heapObjs)
             {
-                std::cerr << heapObj.llPtr << " heap ptr\n";
                 llvm::Value *llDeref = builder_->CreateLoad(globalTys_.heapObj->getPointerTo(), heapObj.llPtr);
-                std::cerr << "n4\n";
                 heapObjUseCountDecr(llDeref, heapObj.type);
             }
-            std::cerr << "n3\n";
             BasicBlock *llBackBlk = BasicBlock::Create(*context_, "back", llParentFn);
             builder_->CreateBr(llBackBlk);
-            std::cerr << "n4\n";
             builder_->SetInsertPoint(llBackBlk);
         }
     }
-    std::cerr << "Done with Block\n";
     blockStack_.pop_back();
 }
 
@@ -1729,7 +1655,6 @@ llvm::Value *Codegen::newHeapObject(const ast::Type &t, llvm::Type *llTy, llvm::
     else
         llvm_unreachable("newHeapObject: unexpected type");
 
-    std::cerr << "NEW OBJ " << llPtr << "\n";
 
     return llPtr;
 }
